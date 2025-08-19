@@ -1,10 +1,10 @@
-
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>mtgArenaSniffer - Setup Test</title>
+    <title>MTGGoldfish Scraper - Fixed Parser</title>
+    
     <style>
         * {
             margin: 0;
@@ -16,122 +16,48 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             background: linear-gradient(135deg, #1e1e1e, #2d2d30);
             color: white;
-            padding: 20px;
+            padding: 2rem;
             min-height: 100vh;
         }
 
         .container {
-            max-width: 600px;
+            max-width: 1200px;
             margin: 0 auto;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 16px;
-            padding: 30px;
-            backdrop-filter: blur(20px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
 
         .header {
             text-align: center;
-            margin-bottom: 30px;
+            margin-bottom: 2rem;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
         .header h1 {
             color: #007AFF;
-            margin-bottom: 8px;
-            font-size: 28px;
-            font-weight: 600;
+            margin-bottom: 0.5rem;
         }
 
-        .subtitle {
-            color: #8E8E93;
-            font-size: 16px;
-        }
-
-        .platform-badge {
-            background: linear-gradient(45deg, #007AFF, #5856D6);
-            color: white;
-            padding: 6px 16px;
-            border-radius: 20px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-block;
-            margin-top: 10px;
-        }
-
-        .checklist {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 12px;
-            padding: 20px;
-            margin: 20px 0;
-        }
-
-        .checklist h3 {
-            color: #34C759;
-            margin-bottom: 15px;
-            font-size: 18px;
-        }
-
-        .check-item {
-            display: flex;
-            align-items: center;
-            margin-bottom: 12px;
-            padding: 8px;
-            border-radius: 8px;
-            transition: background 0.2s;
-        }
-
-        .check-item:hover {
+        .test-controls {
             background: rgba(255, 255, 255, 0.05);
-        }
-
-        .check-icon {
-            width: 20px;
-            height: 20px;
-            border-radius: 50%;
-            margin-right: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 12px;
-            font-weight: bold;
-        }
-
-        .check-icon.success {
-            background: #34C759;
-            color: white;
-        }
-
-        .check-icon.pending {
-            background: #FF9500;
-            color: white;
-        }
-
-        .check-icon.error {
-            background: #FF3B30;
-            color: white;
-        }
-
-        .test-section {
-            margin: 20px 0;
-        }
-
-        .test-section h3 {
-            color: #007AFF;
-            margin-bottom: 15px;
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-bottom: 2rem;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: center;
         }
 
         .btn {
             background: linear-gradient(45deg, #007AFF, #5856D6);
             border: none;
-            padding: 12px 24px;
-            border-radius: 10px;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
             color: white;
             cursor: pointer;
-            margin: 8px 8px 8px 0;
             font-weight: 600;
-            transition: transform 0.2s, box-shadow 0.2s;
-            font-size: 14px;
+            margin: 0.5rem;
+            transition: all 0.2s ease;
         }
 
         .btn:hover {
@@ -139,306 +65,615 @@
             box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
         }
 
-        .btn:active {
-            transform: translateY(0);
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
         }
 
         .btn.secondary {
             background: linear-gradient(45deg, #8E8E93, #636366);
         }
 
-        .btn.secondary:hover {
-            box-shadow: 0 4px 16px rgba(142, 142, 147, 0.3);
+        .status {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 8px;
+            margin: 1rem 0;
+            border-left: 4px solid #007AFF;
         }
 
-        .log-container {
-            background: rgba(0, 0, 0, 0.4);
-            border-radius: 8px;
-            padding: 15px;
-            margin-top: 15px;
-            font-family: 'Monaco', 'Menlo', monospace;
-            font-size: 12px;
-            max-height: 200px;
-            overflow-y: auto;
+        .status.loading {
+            border-left-color: #FF9500;
+        }
+
+        .status.success {
+            border-left-color: #34C759;
+        }
+
+        .status.error {
+            border-left-color: #FF3B30;
+        }
+
+        .results {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 1.5rem;
+            border-radius: 12px;
+            margin-top: 2rem;
             border: 1px solid rgba(255, 255, 255, 0.1);
         }
 
-        .log-entry {
-            margin-bottom: 4px;
-            padding: 2px 0;
-        }
-
-        .log-entry.success { color: #34C759; }
-        .log-entry.error { color: #FF3B30; }
-        .log-entry.warning { color: #FF9500; }
-        .log-entry.info { color: #007AFF; }
-
-        .timestamp {
-            color: #8E8E93;
-            font-size: 10px;
-        }
-
-        .info-box {
-            background: rgba(0, 122, 255, 0.1);
-            border: 1px solid rgba(0, 122, 255, 0.3);
+        .deck-item {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
             border-radius: 8px;
-            padding: 15px;
-            margin: 15px 0;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin: 0.5rem 0;
         }
 
-        .info-box h4 {
-            color: #007AFF;
-            margin-bottom: 8px;
+        .deck-item.rank-1 {
+            border-color: #FFD700;
+            background: rgba(255, 215, 0, 0.1);
         }
 
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 15px;
-            margin-top: 20px;
+        .deck-item.rank-2 {
+            border-color: #C0C0C0;
+            background: rgba(192, 192, 192, 0.1);
         }
 
-        .feature-card {
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 10px;
-            padding: 15px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
+        .deck-item.rank-3 {
+            border-color: #CD7F32;
+            background: rgba(205, 127, 50, 0.1);
         }
 
-        .feature-card h4 {
-            color: #34C759;
-            margin-bottom: 8px;
+        .logs {
+            background: rgba(0, 0, 0, 0.5);
+            padding: 1rem;
+            border-radius: 8px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            max-height: 400px;
+            overflow-y: auto;
+            margin-top: 1rem;
         }
 
-        .feature-card p {
-            color: #8E8E93;
-            font-size: 13px;
-            line-height: 1.4;
+        .log-entry {
+            margin-bottom: 0.25rem;
+            padding: 0.25rem 0;
         }
 
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.6; }
-        }
-
-        .loading {
-            animation: pulse 1.5s infinite;
-        }
+        .log-entry.error { color: #FF3B30; }
+        .log-entry.success { color: #34C759; }
+        .log-entry.info { color: #007AFF; }
+        .log-entry.warning { color: #FF9500; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔍 mtgArenaSniffer</h1>
-            <p class="subtitle">Detector inteligente de mazos para MTG Arena</p>
-            <span class="platform-badge">🍎 macOS Version</span>
+            <h1>🐟 MTGGoldfish Scraper - Parser Mejorado</h1>
+            <p>Versión con parsing adaptado a la estructura real de MTGGoldfish</p>
         </div>
 
-        <div class="checklist">
-            <h3>✅ Verificación del entorno</h3>
-            <div class="check-item">
-                <div class="check-icon success" id="html-check">✓</div>
-                <span>HTML cargado correctamente</span>
-            </div>
-            <div class="check-item">
-                <div class="check-icon pending" id="js-check">⏳</div>
-                <span>JavaScript funcionando</span>
-            </div>
-            <div class="check-item">
-                <div class="check-icon pending" id="css-check">⏳</div>
-                <span>CSS aplicado correctamente</span>
-            </div>
-            <div class="check-item">
-                <div class="check-icon pending" id="vscode-check">⏳</div>
-                <span>VS Code con Live Server</span>
-            </div>
+        <div class="test-controls">
+            <button class="btn" id="test-scraper">🔍 Scrapear MTGGoldfish</button>
+            <button class="btn secondary" id="debug-html">🔧 Debug HTML</button>
+            <button class="btn secondary" id="clear-cache">🗑️ Limpiar Cache</button>
         </div>
 
-        <div class="test-section">
-            <h3>🧪 Tests de funcionalidad</h3>
-            <button class="btn" onclick="testJavaScript()">Test JavaScript</button>
-            <button class="btn" onclick="testLocalStorage()">Test Storage</button>
-            <button class="btn" onclick="testFetch()">Test APIs</button>
-            <button class="btn secondary" onclick="clearLog()">Limpiar Log</button>
-        </div>
+        <div id="status" class="status" style="display: none;"></div>
+        <div id="results" class="results" style="display: none;"></div>
 
-        <div class="info-box">
-            <h4>🎯 Funcionalidades en desarrollo</h4>
-            <p>Como estás en Mac, desarrollaremos una versión web standalone con entrada manual de cartas y predicciones automáticas completas.</p>
-        </div>
-
-        <div class="feature-grid">
-            <div class="feature-card">
-                <h4>🃏 Predicción de mazos</h4>
-                <p>Algoritmo inteligente que predice el mazo del oponente basado en las cartas jugadas</p>
-            </div>
-            <div class="feature-card">
-                <h4>📊 Base de datos meta</h4>
-                <p>Mazos actualizados del meta de Standard con estadísticas de torneos</p>
-            </div>
-            <div class="feature-card">
-                <h4>🎨 Interfaz moderna</h4>
-                <p>Diseño nativo para macOS con animaciones fluidas y UX intuitiva</p>
-            </div>
-            <div class="feature-card">
-                <h4>🔄 Tiempo real</h4>
-                <p>Predicciones que se actualizan automáticamente con cada carta nueva</p>
-            </div>
-        </div>
-
-        <div class="log-container" id="log">
-            <div class="log-entry info">
-                <span class="timestamp">[Iniciando]</span> mtgArenaSniffer cargando...
-            </div>
+        <div class="logs">
+            <h4>📋 Logs detallados</h4>
+            <div id="logs-container"></div>
         </div>
     </div>
 
     <script>
-        // Variables globales
-        let logContainer = document.getElementById('log');
-        let testsPassed = 0;
-
-        // Función para escribir logs
-        function writeLog(message, type = 'info') {
-            const timestamp = new Date().toLocaleTimeString();
-            const entry = document.createElement('div');
-            entry.className = `log-entry ${type}`;
-            entry.innerHTML = `<span class="timestamp">[${timestamp}]</span> ${message}`;
-            logContainer.appendChild(entry);
-            logContainer.scrollTop = logContainer.scrollHeight;
-        }
-
-        // Test de JavaScript
-        function testJavaScript() {
-            try {
-                writeLog('🧪 Ejecutando test de JavaScript...', 'info');
-                
-                // Tests básicos
-                const testArray = [1, 2, 3];
-                const testObject = { name: 'mtgArenaSniffer', version: '1.0' };
-                const testPromise = Promise.resolve('Promise funciona');
-                
-                if (testArray.length === 3 && testObject.name === 'mtgArenaSniffer') {
-                    writeLog('✅ JavaScript: Variables y objetos OK', 'success');
-                    updateCheck('js-check', true);
-                    testsPassed++;
-                } else {
-                    throw new Error('Variables no funcionan correctamente');
-                }
-
-                // Test de ES6
-                const [first, ...rest] = testArray;
-                const { name } = testObject;
-                
-                if (first === 1 && name === 'mtgArenaSniffer') {
-                    writeLog('✅ JavaScript: ES6 features OK', 'success');
-                } else {
-                    throw new Error('ES6 features no funcionan');
-                }
-
-                writeLog('🎉 JavaScript completamente funcional', 'success');
-                
-            } catch (error) {
-                writeLog(`❌ Error en JavaScript: ${error.message}`, 'error');
-                updateCheck('js-check', false);
+        class MTGGoldfishFixedScraper {
+            constructor() {
+                this.targetUrl = 'https://www.mtggoldfish.com/metagame/standard#paper';
+                this.corsProxies = [
+                    'https://api.allorigins.win/raw?url=',
+                    'https://corsproxy.io/?',
+                    'https://cors.bridged.cc/'
+                ];
+                this.debugMode = true;
             }
-        }
 
-        // Test de localStorage
-        function testLocalStorage() {
-            try {
-                writeLog('🧪 Testing Local Storage...', 'info');
-                
-                const testData = { test: 'mtgArenaSniffer', timestamp: Date.now() };
-                localStorage.setItem('mtgArenaSnifferTest', JSON.stringify(testData));
-                
-                const retrieved = JSON.parse(localStorage.getItem('mtgArenaSnifferTest'));
-                
-                if (retrieved && retrieved.test === 'mtgArenaSniffer') {
-                    writeLog('✅ Local Storage: Funcionando correctamente', 'success');
-                    localStorage.removeItem('mtgArenaSnifferTest');
-                } else {
-                    throw new Error('No se pudo recuperar datos');
-                }
-                
-            } catch (error) {
-                writeLog(`❌ Local Storage Error: ${error.message}`, 'error');
-            }
-        }
-
-        // Test de fetch API
-        function testFetch() {
-            writeLog('🧪 Testing Fetch API...', 'info');
-            
-            // Test con una API pública
-            fetch('https://api.github.com/users/octocat')
-                .then(response => {
-                    if (!response.ok) {
-                        throw new Error(`HTTP ${response.status}`);
+            async updateMetaData() {
+                try {
+                    this.log('🔍 Iniciando scraping con parser mejorado...');
+                    
+                    for (let i = 0; i < this.corsProxies.length; i++) {
+                        const proxy = this.corsProxies[i];
+                        
+                        try {
+                            this.log(`🔗 Probando proxy ${i + 1}/${this.corsProxies.length}`);
+                            
+                            const html = await this.fetchHTML(proxy);
+                            const metaData = this.parseWithImprovedParser(html);
+                            
+                            if (metaData.decks.length > 0) {
+                                this.log(`✅ Parser exitoso: ${metaData.decks.length} mazos extraídos`);
+                                this.saveToCache(metaData);
+                                return metaData;
+                            }
+                            
+                        } catch (error) {
+                            this.logError(`❌ Proxy ${i + 1} falló:`, error.message);
+                            continue;
+                        }
                     }
-                    return response.json();
-                })
-                .then(data => {
-                    writeLog('✅ Fetch API: Funcionando correctamente', 'success');
-                    writeLog(`📡 Test API response: ${data.login}`, 'info');
-                })
-                .catch(error => {
-                    writeLog(`❌ Fetch API Error: ${error.message}`, 'error');
-                    writeLog('ℹ️ Fetch API podría estar bloqueada por CORS', 'warning');
+                    
+                    throw new Error('Todos los proxies fallaron');
+                    
+                } catch (error) {
+                    this.logError('❌ Error general:', error);
+                    throw error;
+                }
+            }
+
+            async fetchHTML(proxy) {
+                const proxyUrl = proxy + encodeURIComponent(this.targetUrl);
+                this.log(`📡 Fetching: ${proxy}...`);
+                
+                const response = await fetch(proxyUrl, {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+                        'Accept': 'text/html,application/xhtml+xml',
+                        'Cache-Control': 'no-cache'
+                    }
                 });
-        }
 
-        // Actualizar checks visuales
-        function updateCheck(checkId, success) {
-            const check = document.getElementById(checkId);
-            if (success) {
-                check.className = 'check-icon success';
-                check.textContent = '✓';
-            } else {
-                check.className = 'check-icon error';
-                check.textContent = '✗';
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}`);
+                }
+
+                const html = await response.text();
+                this.log(`✅ HTML recibido: ${html.length} caracteres`);
+                return html;
+            }
+
+            parseWithImprovedParser(html) {
+                this.log('📄 Parseando con parser mejorado...');
+                
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                // Debug detallado de la estructura
+                this.analyzeHTMLStructure(doc);
+                
+                // Probar múltiples estrategias mejoradas
+                const strategies = [
+                    () => this.parseModernTable(doc),
+                    () => this.parseByTextPattern(doc),
+                    () => this.parseByRegexScan(doc),
+                    () => this.parseFallbackMethod(doc)
+                ];
+                
+                for (const strategy of strategies) {
+                    try {
+                        const decks = strategy();
+                        if (decks.length > 0) {
+                            return {
+                                lastUpdated: new Date().toISOString(),
+                                format: 'standard',
+                                source: 'MTGGoldfish-Fixed',
+                                deckCount: decks.length,
+                                decks: decks
+                            };
+                        }
+                    } catch (error) {
+                        this.log(`⚠️ Estrategia falló: ${error.message}`);
+                        continue;
+                    }
+                }
+                
+                throw new Error('Todas las estrategias de parsing fallaron');
+            }
+
+            parseModernTable(doc) {
+                this.log('🔍 Parser 1: Tabla moderna de MTGGoldfish...');
+                
+                const decks = [];
+                
+                // Buscar todas las filas que contengan enlaces de arquetipo
+                const rows = doc.querySelectorAll('tr');
+                this.log(`📊 Analizando ${rows.length} filas...`);
+                
+                for (const row of rows) {
+                    const archetypeLink = row.querySelector('a[href*="/archetype/standard"]');
+                    if (!archetypeLink) continue;
+                    
+                    const deckName = this.cleanText(archetypeLink.textContent);
+                    if (!deckName || deckName.length < 3) continue;
+                    
+                    // Buscar porcentaje en la misma fila usando patrones más flexibles
+                    const rowText = row.textContent;
+                    const percentageMatches = [
+                        rowText.match(/(\d+\.?\d*)\s*%/),
+                        rowText.match(/(\d+\.?\d*)%/),
+                        rowText.match(/(\d{1,2}\.\d{1,2})%/),
+                        rowText.match(/(\d{1,2})%/)
+                    ];
+                    
+                    let metaShare = null;
+                    for (const match of percentageMatches) {
+                        if (match) {
+                            metaShare = parseFloat(match[1]);
+                            if (metaShare > 0 && metaShare <= 100) break;
+                        }
+                    }
+                    
+                    if (metaShare && metaShare > 0) {
+                        decks.push({
+                            id: this.generateDeckId(deckName),
+                            name: deckName,
+                            metaShare: metaShare,
+                            rank: decks.length + 1,
+                            url: archetypeLink.getAttribute('href'),
+                            extractedAt: new Date().toISOString()
+                        });
+                        
+                        this.log(`📋 Extraído: ${deckName} (${metaShare}%)`);
+                    }
+                }
+                
+                if (decks.length === 0) {
+                    throw new Error('No se encontraron mazos en tabla moderna');
+                }
+                
+                // Ordenar por meta share
+                decks.sort((a, b) => b.metaShare - a.metaShare);
+                decks.forEach((deck, index) => deck.rank = index + 1);
+                
+                return decks.slice(0, 15);
+            }
+
+            parseByTextPattern(doc) {
+                this.log('🔍 Parser 2: Búsqueda por patrones de texto...');
+                
+                const decks = [];
+                const allText = doc.body.textContent;
+                
+                // Buscar patrones como "Deck Name 15.3%"
+                const patterns = [
+                    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)\s+(\d+\.?\d*)\s*%/g,
+                    /([A-Z][a-z]+(?:\s+[A-Z][a-z]+){1,3})\s*(\d+\.?\d*)\s*%/g
+                ];
+                
+                for (const pattern of patterns) {
+                    let match;
+                    while ((match = pattern.exec(allText)) !== null) {
+                        const deckName = match[1].trim();
+                        const metaShare = parseFloat(match[2]);
+                        
+                        if (deckName.length > 3 && metaShare > 0 && metaShare <= 50) {
+                            // Verificar que no sea un duplicado
+                            if (!decks.some(d => d.name === deckName)) {
+                                decks.push({
+                                    id: this.generateDeckId(deckName),
+                                    name: deckName,
+                                    metaShare: metaShare,
+                                    rank: decks.length + 1,
+                                    extractedAt: new Date().toISOString()
+                                });
+                                
+                                this.log(`🎯 Patrón encontrado: ${deckName} (${metaShare}%)`);
+                            }
+                        }
+                    }
+                }
+                
+                if (decks.length === 0) {
+                    throw new Error('No se encontraron patrones de texto válidos');
+                }
+                
+                return decks.slice(0, 15);
+            }
+
+            parseByRegexScan(doc) {
+                this.log('🔍 Parser 3: Escaneo con regex avanzado...');
+                
+                const decks = [];
+                
+                // Obtener todo el HTML como texto
+                const htmlText = doc.documentElement.innerHTML;
+                
+                // Patrones regex más específicos para MTGGoldfish
+                const deckPatterns = [
+                    /"archetype\/standard[^"]*"[^>]*>([^<]+)<[^>]*>.*?(\d+\.?\d*)\s*%/gi,
+                    /href="\/archetype\/standard[^"]*"[^>]*>([^<]+)<.*?(\d+\.?\d*)\s*%/gi,
+                    />([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)<\/a>.*?(\d+\.?\d*)\s*%/gi
+                ];
+                
+                for (const pattern of deckPatterns) {
+                    let match;
+                    while ((match = pattern.exec(htmlText)) !== null) {
+                        const deckName = this.cleanText(match[1]);
+                        const metaShare = parseFloat(match[2]);
+                        
+                        if (deckName && deckName.length > 3 && metaShare > 0 && metaShare <= 50) {
+                            if (!decks.some(d => d.name === deckName)) {
+                                decks.push({
+                                    id: this.generateDeckId(deckName),
+                                    name: deckName,
+                                    metaShare: metaShare,
+                                    rank: decks.length + 1,
+                                    extractedAt: new Date().toISOString()
+                                });
+                                
+                                this.log(`🔍 Regex match: ${deckName} (${metaShare}%)`);
+                            }
+                        }
+                    }
+                }
+                
+                if (decks.length === 0) {
+                    throw new Error('No se encontraron matches con regex');
+                }
+                
+                return decks.slice(0, 15);
+            }
+
+            parseFallbackMethod(doc) {
+                this.log('🔍 Parser 4: Método de fallback...');
+                
+                // Si todo falla, crear datos básicos con los arquetipos encontrados
+                const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/standard"]');
+                const decks = [];
+                
+                // Asignar porcentajes estimados basados en orden
+                const estimatedShares = [18, 15, 12, 10, 8, 6, 5, 4, 3, 2, 2, 1, 1, 1, 1];
+                
+                for (let i = 0; i < Math.min(archetypeLinks.length, 15); i++) {
+                    const link = archetypeLinks[i];
+                    const deckName = this.cleanText(link.textContent);
+                    
+                    if (deckName && deckName.length > 3) {
+                        decks.push({
+                            id: this.generateDeckId(deckName),
+                            name: deckName,
+                            metaShare: estimatedShares[i] || 1,
+                            rank: i + 1,
+                            url: link.getAttribute('href'),
+                            extractedAt: new Date().toISOString(),
+                            estimated: true
+                        });
+                        
+                        this.log(`📊 Fallback: ${deckName} (~${estimatedShares[i] || 1}%)`);
+                    }
+                }
+                
+                if (decks.length === 0) {
+                    throw new Error('Método de fallback también falló');
+                }
+                
+                this.log('⚠️ Usando porcentajes estimados (método fallback)');
+                return decks;
+            }
+
+            analyzeHTMLStructure(doc) {
+                this.log('🔍 Análisis detallado de HTML...');
+                
+                const tables = doc.querySelectorAll('table');
+                const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/"]');
+                const standardLinks = doc.querySelectorAll('a[href*="/archetype/standard"]');
+                
+                this.log(`📊 Estructura encontrada:`);
+                this.log(`  - Tablas totales: ${tables.length}`);
+                this.log(`  - Enlaces de arquetipo: ${archetypeLinks.length}`);
+                this.log(`  - Enlaces Standard: ${standardLinks.length}`);
+                
+                // Mostrar algunos ejemplos de enlaces Standard
+                if (standardLinks.length > 0) {
+                    this.log(`🔗 Ejemplos de mazos Standard encontrados:`);
+                    for (let i = 0; i < Math.min(5, standardLinks.length); i++) {
+                        const link = standardLinks[i];
+                        const name = this.cleanText(link.textContent);
+                        const href = link.getAttribute('href');
+                        this.log(`  ${i + 1}. "${name}" -> ${href}`);
+                    }
+                }
+                
+                // Analizar contenido de texto para porcentajes
+                const bodyText = doc.body.textContent;
+                const percentageMatches = bodyText.match(/\d+\.?\d*\s*%/g) || [];
+                this.log(`📊 Porcentajes encontrados en texto: ${percentageMatches.length}`);
+                if (percentageMatches.length > 0) {
+                    this.log(`  Ejemplos: ${percentageMatches.slice(0, 10).join(', ')}`);
+                }
+            }
+
+            debugHTML(html) {
+                const parser = new DOMParser();
+                const doc = parser.parseFromString(html, 'text/html');
+                
+                this.analyzeHTMLStructure(doc);
+                
+                // Mostrar fragmento del HTML
+                this.log('📄 Fragmento del HTML recibido:');
+                const fragment = html.substring(0, 2000) + '...';
+                console.log(fragment);
+                
+                return doc;
+            }
+
+            cleanText(text) {
+                if (!text) return '';
+                return text.trim().replace(/\s+/g, ' ').replace(/[^\w\s\-'.,]/g, '').trim();
+            }
+
+            generateDeckId(name) {
+                return name.toLowerCase().replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, '-').substring(0, 50);
+            }
+
+            saveToCache(data) {
+                try {
+                    localStorage.setItem('mtgArenaSniffer_fixedMetaData', JSON.stringify(data));
+                    this.log('💾 Datos guardados en cache');
+                } catch (error) {
+                    this.logError('Error guardando cache:', error);
+                }
+            }
+
+            loadCachedData() {
+                try {
+                    const cached = localStorage.getItem('mtgArenaSniffer_fixedMetaData');
+                    return cached ? JSON.parse(cached) : null;
+                } catch (error) {
+                    return null;
+                }
+            }
+
+            log(message) {
+                console.log(`🐟 [FixedScraper] ${message}`);
+                addLog(message, 'info');
+            }
+
+            logError(message, error = null) {
+                console.error(`❌ [FixedScraper] ${message}`, error || '');
+                addLog(`${message}`, 'error');
             }
         }
 
-        // Limpiar log
-        function clearLog() {
-            logContainer.innerHTML = '<div class="log-entry info"><span class="timestamp">[Limpiado]</span> Log reiniciado</div>';
+        // Variables globales
+        let scraper = null;
+        let logs = [];
+
+        function addLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            logs.push({ timestamp, message, type });
+            
+            const logsContainer = document.getElementById('logs-container');
+            const logElement = document.createElement('div');
+            logElement.className = `log-entry ${type}`;
+            logElement.textContent = `[${timestamp}] ${message}`;
+            
+            logsContainer.appendChild(logElement);
+            logsContainer.scrollTop = logsContainer.scrollHeight;
+            
+            if (logs.length > 100) {
+                logs.shift();
+                if (logsContainer.children.length > 100) {
+                    logsContainer.removeChild(logsContainer.firstChild);
+                }
+            }
         }
 
-        // Auto-ejecutar al cargar
-        document.addEventListener('DOMContentLoaded', function() {
-            writeLog('🚀 mtgArenaSniffer iniciando...', 'info');
-            writeLog('🍎 Detectado: macOS', 'info');
-            writeLog('🌐 Modo: Desarrollo web standalone', 'info');
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('status');
+            statusDiv.style.display = 'block';
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+        }
+
+        function showResults(metaData) {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.style.display = 'block';
             
-            // Verificar CSS
-            const computed = getComputedStyle(document.body);
-            if (computed.background.includes('gradient') || computed.background.includes('linear')) {
-                writeLog('✅ CSS: Estilos aplicados correctamente', 'success');
-                updateCheck('css-check', true);
+            resultsDiv.innerHTML = `
+                <h3>📊 Mazos extraídos del meta Standard</h3>
+                <p><strong>Total:</strong> ${metaData.deckCount} mazos | <strong>Fuente:</strong> ${metaData.source}</p>
+                <div class="deck-list">
+                    ${metaData.decks.map(deck => `
+                        <div class="deck-item rank-${deck.rank <= 3 ? deck.rank : ''}">
+                            <div>
+                                <strong>${deck.name}</strong>
+                                <small style="display: block; color: #8E8E93;">
+                                    ${deck.url ? `<a href="https://www.mtggoldfish.com${deck.url}" target="_blank" style="color: #007AFF;">Ver en MTGGoldfish ↗</a>` : ''}
+                                    ${deck.estimated ? ' (porcentaje estimado)' : ''}
+                                </small>
+                            </div>
+                            <div style="text-align: right;">
+                                <div style="font-size: 1.25rem; font-weight: bold; color: #34C759;">${deck.metaShare}%</div>
+                                <div style="font-size: 0.75rem; background: #007AFF; color: white; padding: 0.25rem 0.5rem; border-radius: 4px;">
+                                    #${deck.rank}
+                                </div>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+            `;
+        }
+
+        async function testScraper() {
+            if (!scraper) return;
+            
+            try {
+                showStatus('🔍 Scrapeando con parser mejorado...', 'loading');
+                document.getElementById('test-scraper').disabled = true;
+                
+                const metaData = await scraper.updateMetaData();
+                
+                if (metaData && metaData.decks.length > 0) {
+                    showStatus(`✅ ¡ÉXITO! ${metaData.decks.length} mazos extraídos`, 'success');
+                    addLog(`✅ Parser exitoso: ${metaData.decks.length} mazos del meta Standard`, 'success');
+                    
+                    addLog('🏆 Top 5 mazos encontrados:', 'success');
+                    metaData.decks.slice(0, 5).forEach((deck, i) => {
+                        addLog(`  ${i + 1}. ${deck.name} (${deck.metaShare}%)`, 'success');
+                    });
+                    
+                    showResults(metaData);
+                } else {
+                    throw new Error('No se pudieron extraer mazos');
+                }
+                
+            } catch (error) {
+                showStatus(`❌ Error: ${error.message}`, 'error');
+                addLog(`❌ Error en scraping: ${error.message}`, 'error');
+            } finally {
+                document.getElementById('test-scraper').disabled = false;
             }
+        }
+
+        async function debugHTML() {
+            if (!scraper) return;
             
-            // Verificar si está en Live Server
-            if (location.protocol === 'http:' && location.hostname === '127.0.0.1') {
-                writeLog('✅ Live Server: Detectado y funcionando', 'success');
-                updateCheck('vscode-check', true);
-            } else if (location.protocol === 'file:') {
-                writeLog('⚠️ Abriendo desde archivo local - Recomendado usar Live Server', 'warning');
-                updateCheck('vscode-check', false);
+            try {
+                addLog('🔧 Iniciando debug detallado del HTML...', 'info');
+                
+                const proxy = scraper.corsProxies[0];
+                const html = await scraper.fetchHTML(proxy);
+                
+                const doc = scraper.debugHTML(html);
+                
+                addLog('🔧 Debug completado - revisa la consola para detalles', 'info');
+                
+            } catch (error) {
+                addLog(`❌ Error en debug: ${error.message}`, 'error');
             }
-            
-            writeLog('🎯 Listo para comenzar desarrollo', 'success');
-            writeLog('👆 Haz click en los botones de test arriba', 'info');
+        }
+
+        function clearCache() {
+            localStorage.removeItem('mtgArenaSniffer_fixedMetaData');
+            addLog('🗑️ Cache limpiado', 'success');
+            document.getElementById('results').style.display = 'none';
+        }
+
+        // Inicialización
+        document.addEventListener('DOMContentLoaded', () => {
+            addLog('🚀 Inicializando scraper con parser mejorado...', 'info');
+            scraper = new MTGGoldfishFixedScraper();
+            addLog('✅ Scraper listo - probará 4 métodos diferentes de parsing', 'success');
         });
 
-        // Hacer disponible globalmente
-        window.mtgArenaSnifferTest = {
-            writeLog,
-            testJavaScript,
-            testLocalStorage,
-            testFetch,
-            clearLog
-        };
+        // Event listeners
+        document.getElementById('test-scraper').addEventListener('click', testScraper);
+        document.getElementById('debug-html').addEventListener('click', debugHTML);
+        document.getElementById('clear-cache').addEventListener('click', clearCache);
+
+        // Funciones globales
+        window.testScraper = testScraper;
+        window.debugHTML = debugHTML;
+        window.getScraper = () => scraper;
+
     </script>
 </body>
 </html>
