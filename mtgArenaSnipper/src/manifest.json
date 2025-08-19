@@ -1,0 +1,93 @@
+
+{
+  "manifest_version": 1,
+  "type": "WebApp",
+  "meta": {
+    "name": "mtgArenaSniffer",
+    "author": "Tu Nombre",
+    "version": "1.0.0",
+    "minimum-overwolf-version": "0.77.10",
+    "description": "Detector inteligente de mazos para MTG Arena que predice el mazo del oponente en tiempo real",
+    "dock_button_title": "MTG Sniffer",
+    "icon": "assets/icons/icon.png",
+    "icon_gray": "assets/icons/icon.png",
+    "launcher_icon": "assets/icons/icon.png",
+    "window_icon": "assets/icons/icon.png"
+  },
+  "data": {
+    "start_window": "MainWindow",
+    "windows": {
+      "MainWindow": {
+        "file": "index.html",
+        "show_in_taskbar": true,
+        "transparent": true,
+        "override_on_update": false,
+        "size": {
+          "width": 1200,
+          "height": 800
+        },
+        "min_size": {
+          "width": 800,
+          "height": 600
+        },
+        "start_position": {
+          "top": 100,
+          "left": 100
+        },
+        "topmost": false,
+        "grab_keyboard_focus": false,
+        "grab_focus_on_desktop": false,
+        "resizable": true,
+        "focus_game_takeover": "ReleaseOnHidden",
+        "focus_game_takeover_release_hotkey": "ctrl+alt+f"
+      }
+    },
+    "game_targeting": {
+      "type": "dedicated",
+      "game_ids": [21308]
+    },
+    "game_events": [21308],
+    "permissions": [
+      "Extensions",
+      "Hotkeys",
+      "GameInfo",
+      "GameControl",
+      "FileSystem",
+      "Logging",
+      "Web"
+    ],
+    "channel-id": 0,
+    "dependencies": null,
+    "data": {},
+    "externally_connectable": {
+      "matches": [
+        "https://*.mtggoldfish.com/*",
+        "https://api.scryfall.com/*",
+        "https://api.allorigins.win/*"
+      ]
+    },
+    "content_scripts": [],
+    "launch_events": [
+      {
+        "event": "GameLaunch",
+        "event_data": {
+          "game_ids": [21308]
+        },
+        "start_minimized": false
+      }
+    ],
+    "user_agent": null,
+    "hotkeys": {
+      "toggle_app": {
+        "title": "Mostrar/Ocultar mtgArenaSniffer",
+        "action-type": "toggle",
+        "default": "Ctrl+Alt+M"
+      },
+      "reset_game": {
+        "title": "Reiniciar juego actual",
+        "action-type": "custom",
+        "default": "Ctrl+Alt+R"
+      }
+    }
+  }
+}
