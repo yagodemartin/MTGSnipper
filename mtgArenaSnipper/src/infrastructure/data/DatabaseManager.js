@@ -1,5 +1,5 @@
 // src/infrastructure/data/DatabaseManager.js
-// 🗄️ Gestor de base de datos dinámica con scraper de datos RECIENTES
+// 🗄️ DatabaseManager actualizado para cartas reales del scraper
 
 import MTGGoldfishCompleteScraper from './MTGGoldfishCompleteScraper.js';
 
@@ -12,95 +12,58 @@ class DatabaseManager {
         
         // Cache keys
         this.cacheKeys = {
-            metaData: 'mtgArenaSniffer_metaData',
-            lastUpdate: 'mtgArenaSniffer_lastUpdate',
-            updateStatus: 'mtgArenaSniffer_updateStatus'
+            metaData: 'mtgArenaSniffer_metaData_v2', // v2 para cartas reales
+            lastUpdate: 'mtgArenaSniffer_lastUpdate_v2',
+            updateStatus: 'mtgArenaSniffer_updateStatus_v2'
         };
 
         // Configuración
         this.config = {
-            maxCacheAge: 12 * 60 * 60 * 1000, // 12 horas (más frecuente para datos recientes)
-            fallbackData: true,
-            autoUpdate: true,
+    // POR ESTO:
+            maxCacheAge: 7 * 24 * 60 * 60 * 1000, // 7 días
+            autoUpdate: false,
             debugMode: true
         };
 
         this.debugMode = true;
     }
 
-    /**
-     * 🚀 Inicializar base de datos - método principal
-     */
-    async initialize() {
-        try {
-            this.log('🚀 Inicializando DatabaseManager con datos RECIENTES...');
-
-            // Cargar datos existentes primero
-            await this.loadCachedData();
-
-            // Verificar si necesita actualización (más frecuente para datos recientes)
-            if (this.config.autoUpdate && this.needsUpdate()) {
-                this.log('📅 Datos desactualizados, actualizando con datos recientes...');
-                this.updateInBackground();
-            }
-
-            // Si no tenemos datos, forzar actualización
-            if (!this.currentMetaData) {
-                this.log('📊 No hay datos en cache, forzando actualización...');
+   async initialize() {
+    try {
+        this.log('🚀 Inicializando DatabaseManager...');
+        await this.loadCachedData();
+        
+        if (!this.currentMetaData) {
+            this.log('📊 Sin datos, intentando actualización...');
+            try {
                 await this.updateData();
+            } catch (error) {
+                this.logError('No se pudieron obtener datos:', error);
             }
-
-            this.log('✅ DatabaseManager inicializado con datos recientes');
-            return { success: true, source: this.getDataSource() };
-
-        } catch (error) {
-            this.logError('❌ Error inicializando DatabaseManager:', error);
-            
-            // Cargar datos fallback si falla todo
-            if (this.config.fallbackData) {
-                await this.loadFallbackData();
-                return { success: true, source: 'fallback', warning: error.message };
-            }
-            
-            return { success: false, error: error.message };
         }
+        
+        this.log('✅ DatabaseManager inicializado');
+        return { success: true, source: this.getDataSource() };
+    } catch (error) {
+        this.logError('❌ Error inicializando:', error);
+        return { success: false, error: error.message };
     }
+}
 
     /**
-     * 📊 Obtener datos del meta actual (con datos recientes)
+     * 📊 Verificar si tenemos cartas reales
      */
-    async getMetaData(forceUpdate = false) {
-        try {
-            // Si se fuerza actualización
-            if (forceUpdate) {
-                return await this.forceUpdate();
-            }
-
-            // Si ya tenemos datos recientes y no necesitan actualización
-            if (this.currentMetaData && !this.needsUpdate()) {
-                return this.currentMetaData;
-            }
-
-            // Si hay actualización en progreso, esperar
-            if (this.isUpdating && this.updatePromise) {
-                this.log('⏳ Esperando actualización en progreso...');
-                await this.updatePromise;
-                return this.currentMetaData;
-            }
-
-            // Iniciar actualización si es necesaria
-            return await this.updateData();
-
-        } catch (error) {
-            this.logError('Error obteniendo meta data:', error);
-            
-            // Retornar datos cached si hay error
-            return this.currentMetaData || await this.loadFallbackData();
-        }
+    hasRealCards() {
+        if (!this.currentMetaData || !this.currentMetaData.decks) return false;
+        
+        // Verificar que al menos un mazo tenga cartas reales
+        return this.currentMetaData.decks.some(deck => 
+            deck.mainboard && deck.mainboard.length > 30 // Al menos 30 cartas reales
+        );
     }
 
     /**
-     * 🔄 Actualizar datos (método principal con scraper reciente)
+     * 🔄 Actualizar con scraper completo
      */
     async updateData() {
         if (this.isUpdating) {
@@ -108,9 +71,9 @@ class DatabaseManager {
         }
 
         this.isUpdating = true;
-        this.updateStatus('updating', 'Obteniendo datos recientes de MTGGoldfish...');
+        this.updateStatus('updating', 'Scrapeando cartas reales de MTGGoldfish...');
 
-        this.updatePromise = this.performUpdate();
+        this.updatePromise = this.performRealUpdate();
         
         try {
             const result = await this.updatePromise;
@@ -122,23 +85,32 @@ class DatabaseManager {
     }
 
     /**
-     * 🔄 Realizar actualización real con scraper reciente
+     * 🔄 Realizar actualización con cartas reales
      */
-    async performUpdate() {
+    async performRealUpdate() {
         try {
-            this.log('🔄 Iniciando actualización con datos RECIENTES...');
-            this.updateStatus('scraping', 'Scrapeando datos de últimos 7 días...');
+            this.log('🔄 Iniciando scraping completo con CARTAS REALES...');
+            this.updateStatus('scraping', 'Scrapeando top 15 mazos con todas sus cartas...');
 
-            // Usar el scraper actualizado para obtener datos recientes
+            // Usar el scraper completo para obtener cartas reales
             const freshData = await this.scraper.scrapeCompleteMetaData();
 
             if (!freshData || !freshData.decks || freshData.decks.length === 0) {
-                throw new Error('No se obtuvieron datos válidos del scraper reciente');
+                throw new Error('No se obtuvieron datos válidos del scraper');
             }
 
-            // Procesar y normalizar datos
-            this.updateStatus('processing', 'Procesando datos recientes...');
-            const processedData = await this.processScrapedData(freshData);
+            // Verificar que tenemos cartas reales
+            const decksWithCards = freshData.decks.filter(deck => 
+                deck.mainboard && deck.mainboard.length > 10
+            );
+
+            if (decksWithCards.length === 0) {
+                throw new Error('No se scrapearon cartas reales de los mazos');
+            }
+
+            // Procesar datos para predicción
+            this.updateStatus('processing', 'Procesando cartas para sistema de predicción...');
+            const processedData = await this.processRealCardData(freshData);
 
             // Guardar en cache
             await this.saveToCache(processedData);
@@ -146,103 +118,107 @@ class DatabaseManager {
             // Actualizar datos actuales
             this.currentMetaData = processedData;
 
-            const dataAge = freshData.dataRange || 'últimos 7 días';
-            this.updateStatus('completed', `✅ ${processedData.decks.length} mazos actualizados (${dataAge})`);
-            this.log(`✅ Actualización completada: ${processedData.decks.length} mazos de ${dataAge}`);
+            this.updateStatus('completed', `✅ ${processedData.decks.length} mazos con ${processedData.totalRealCards} cartas reales`);
+            this.log(`✅ Actualización completada: ${processedData.decks.length} mazos con cartas reales`);
 
             return processedData;
 
         } catch (error) {
-            this.logError('❌ Error en actualización:', error);
+            this.logError('❌ Error en actualización con cartas reales:', error);
             this.updateStatus('error', `Error: ${error.message}`);
-            
-            // Si falla, usar datos cached o fallback
-            if (!this.currentMetaData) {
-                this.currentMetaData = await this.loadFallbackData();
-            }
-            
             throw error;
         }
     }
 
     /**
-     * ⚙️ Procesar datos scrapeados de fuente reciente
+     * ⚙️ Procesar datos reales del scraper para predicción
      */
-    async processScrapedData(scrapedData) {
+    async processRealCardData(scrapedData) {
         try {
-            this.log('⚙️ Procesando datos recientes scrapeados...');
+            this.log('⚙️ Procesando cartas reales para sistema de predicción...');
 
-            const processedDecks = scrapedData.decks.map(deck => this.processDeck(deck));
+            const processedDecks = scrapedData.decks.map(deck => this.processRealDeck(deck));
 
-            // Añadir metadatos específicos para datos recientes
+            // Estadísticas de cartas reales
+            const totalRealCards = processedDecks.reduce((sum, deck) => 
+                sum + (deck.mainboard?.length || 0) + (deck.sideboard?.length || 0), 0
+            );
+
             const processedData = {
                 ...scrapedData,
                 decks: processedDecks,
                 processedAt: new Date().toISOString(),
-                version: '2.0',
+                version: '3.0-real-cards',
                 deckCount: processedDecks.length,
-                dataFreshness: 'recent', // Marcador de datos recientes
+                totalRealCards,
+                dataFreshness: 'real-cards',
                 
-                // Estadísticas del meta
-                metaStats: this.calculateMetaStats(processedDecks),
+                // Estadísticas del meta con cartas reales
+                metaStats: this.calculateRealMetaStats(processedDecks),
                 
-                // Índices para búsqueda rápida
-                indices: this.buildSearchIndices(processedDecks)
+                // Índices de búsqueda por cartas reales
+                indices: this.buildRealCardIndices(processedDecks)
             };
 
             return processedData;
 
         } catch (error) {
-            this.logError('Error procesando datos recientes:', error);
+            this.logError('Error procesando cartas reales:', error);
             throw error;
         }
     }
 
     /**
-     * 🃏 Procesar mazo individual con datos recientes
+     * 🃏 Procesar mazo individual con cartas reales
      */
-    processDeck(rawDeck) {
+    processRealDeck(rawDeck) {
         try {
-            // Generar ID consistente
             const id = this.generateDeckId(rawDeck.name);
 
-            // Procesar cartas clave para predicción
-            const processedKeyCards = this.processKeyCards(rawDeck.keyCards || []);
+            // Procesar cartas reales del mainboard
+            const processedMainboard = this.processCardList(rawDeck.mainboard || []);
+            const processedSideboard = this.processCardList(rawDeck.sideboard || []);
 
-            // Detectar arquetipo (ya viene del scraper mejorado)
-            const archetype = rawDeck.archetype || this.detectArchetype(rawDeck);
+            // Identificar cartas signature y clave REALES
+            const signatureCards = this.identifyRealSignatureCards(processedMainboard);
+            const keyCards = this.identifyRealKeyCards(processedMainboard);
 
-            // Calcular métricas
-            const metrics = this.calculateDeckMetrics(rawDeck);
+            // Detectar arquetipo basado en cartas reales
+            const archetype = this.detectArchetypeFromRealCards(processedMainboard);
+            
+            // Inferir colores desde cartas reales
+            const colors = this.inferColorsFromRealCards(processedMainboard);
 
             return {
                 id,
                 name: rawDeck.name,
                 metaShare: parseFloat(rawDeck.metaShare) || 0,
                 rank: rawDeck.rank || 0,
-                colors: rawDeck.colors || [],
+                colors,
                 archetype,
                 
-                // Datos para predicción
-                signatureCards: this.identifySignatureCards(rawDeck),
-                keyCards: processedKeyCards,
-                commonCards: this.identifyCommonCards(rawDeck),
+                // CARTAS REALES para predicción
+                signatureCards,
+                keyCards,
+                mainboard: processedMainboard,
+                sideboard: processedSideboard,
+                
+                // Datos visuales
+                deckImage: rawDeck.deckImage,
                 
                 // Información estratégica
-                strategy: this.inferStrategy(rawDeck, archetype),
-                weakness: this.inferWeakness(rawDeck, archetype),
-                expectedCurve: this.inferPlayPattern(rawDeck),
+                strategy: this.inferStrategy(archetype, rawDeck.name),
+                weakness: this.inferWeakness(archetype, rawDeck.name),
                 
-                // Datos técnicos
-                mainboard: rawDeck.mainboard || [],
-                sideboard: rawDeck.sideboard || [],
-                cardCount: rawDeck.cardCount || 60,
+                // Métricas
+                cardCount: processedMainboard.length + processedSideboard.length,
+                mainboardCount: processedMainboard.length,
+                sideboardCount: processedSideboard.length,
                 
                 // Metadatos
-                metrics,
                 lastUpdated: rawDeck.extractedAt || new Date().toISOString(),
-                source: rawDeck.source || 'MTGGoldfish-Recent',
-                dataAge: 'recent' // Marcador de datos recientes
+                source: 'MTGGoldfish-Real-Cards',
+                dataAge: 'real'
             };
 
         } catch (error) {
@@ -258,331 +234,287 @@ class DatabaseManager {
                 archetype: 'unknown',
                 signatureCards: [],
                 keyCards: [],
-                commonCards: [],
-                strategy: 'Unknown strategy',
-                weakness: 'Unknown weakness',
                 mainboard: [],
                 sideboard: [],
+                deckImage: null,
                 lastUpdated: new Date().toISOString(),
-                dataAge: 'recent'
+                dataAge: 'real'
             };
         }
     }
 
     /**
-     * 📊 Cargar datos de fallback actualizados
+     * 📋 Procesar lista de cartas
      */
-    async loadFallbackData() {
-        this.log('📊 Cargando datos fallback actualizados...');
+    processCardList(cardList) {
+        if (!cardList || !Array.isArray(cardList)) return [];
         
-        // Datos de fallback basados en el meta reciente de Standard
-        const fallbackData = {
-            lastUpdated: new Date().toISOString(),
-            format: 'standard',
-            source: 'Fallback-Recent',
-            deckCount: 15,
-            dataFreshness: 'fallback',
-            dataRange: 'Meta actual estimado',
-            decks: [
-                {
-                    id: 'domain-ramp',
-                    name: 'Domain Ramp',
-                    metaShare: 18.5,
-                    rank: 1,
-                    colors: ['W', 'U', 'B', 'R', 'G'],
-                    archetype: 'ramp',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'mono-red-aggro',
-                    name: 'Mono Red Aggro',
-                    metaShare: 15.2,
-                    rank: 2,
-                    colors: ['R'],
-                    archetype: 'aggro',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'azorius-control',
-                    name: 'Azorius Control',
-                    metaShare: 12.8,
-                    rank: 3,
-                    colors: ['W', 'U'],
-                    archetype: 'control',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'orzhov-midrange',
-                    name: 'Orzhov Midrange',
-                    metaShare: 11.4,
-                    rank: 4,
-                    colors: ['W', 'B'],
-                    archetype: 'midrange',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'boros-convoke',
-                    name: 'Boros Convoke',
-                    metaShare: 9.7,
-                    rank: 5,
-                    colors: ['W', 'R'],
-                    archetype: 'aggro',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'golgari-midrange',
-                    name: 'Golgari Midrange',
-                    metaShare: 8.3,
-                    rank: 6,
-                    colors: ['B', 'G'],
-                    archetype: 'midrange',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'esper-control',
-                    name: 'Esper Control',
-                    metaShare: 6.9,
-                    rank: 7,
-                    colors: ['W', 'U', 'B'],
-                    archetype: 'control',
-                    extractedAt: new Date().toISOString()
-                },
-                {
-                    id: 'temur-discover',
-                    name: 'Temur Discover',
-                    metaShare: 5.8,
-                    rank: 8,
-                    colors: ['U', 'R', 'G'],
-                    archetype: 'midrange',
-                    extractedAt: new Date().toISOString()
-                }
-            ]
-        };
-
-        const processedFallback = await this.processScrapedData(fallbackData);
-        this.currentMetaData = processedFallback;
-        
-        return processedFallback;
+        return cardList.map(card => ({
+            name: card.name,
+            quantity: card.quantity || 1,
+            imageUrl: card.imageUrl || null,
+            normalizedName: this.normalizeCardName(card.name),
+            extractedAt: card.extractedAt || new Date().toISOString()
+        }));
     }
 
     /**
-     * ⏰ Verificar si necesita actualización (más frecuente para datos recientes)
+     * 🎯 Identificar cartas signature REALES (peso máximo para predicción)
      */
-    needsUpdate() {
-        if (!this.currentMetaData) {
-            return true;
-        }
+    identifyRealSignatureCards(mainboard) {
+        if (!mainboard || mainboard.length === 0) return [];
 
-        const lastUpdate = this.getLastUpdateTimestamp();
-        const now = Date.now();
-        const timeSinceUpdate = now - lastUpdate;
-
-        // Para datos recientes, actualizar más frecuentemente
-        return timeSinceUpdate >= this.config.maxCacheAge;
-    }
-
-    /**
-     * 🔧 Obtener fuente de datos actual
-     */
-    getDataSource() {
-        if (!this.currentMetaData) return 'none';
-        
-        const source = this.currentMetaData.source || '';
-        
-        if (source.includes('Recent') || source.includes('7Days')) return 'recent';
-        if (source.includes('Fallback')) return 'fallback';
-        if (source.includes('MTGGoldfish')) return 'scraped';
-        
-        return 'unknown';
-    }
-
-    // Resto de métodos permanecen igual...
-    
-    /**
-     * 🔑 Identificar cartas signature
-     */
-    identifySignatureCards(deck) {
-        if (!deck.keyCards || deck.keyCards.length === 0) {
-            return [];
-        }
-
-        return deck.keyCards
-            .filter(card => card.quantity >= 4) // 4 copias = signature
+        // Cartas signature = 4 copias + nombre único/característico
+        const signatureCards = mainboard
+            .filter(card => card.quantity === 4)
+            .filter(card => this.isSignatureCard(card.name))
             .map(card => ({
                 name: card.name,
-                weight: 100,
-                probability: 0.95,
-                role: card.role || 'signature'
+                weight: 100, // Peso máximo
+                probability: 0.98, // 98% probability si aparece
+                role: 'signature',
+                quantity: card.quantity,
+                imageUrl: card.imageUrl
             }))
-            .slice(0, 3);
+            .slice(0, 3); // Top 3 signature cards
+
+        return signatureCards;
     }
 
     /**
-     * 🃏 Procesar cartas clave
+     * 🔑 Identificar cartas clave REALES
      */
-    processKeyCards(keyCards) {
-        return keyCards
-            .filter(card => card.quantity >= 2) // 2+ copias = key card
+    identifyRealKeyCards(mainboard) {
+        if (!mainboard || mainboard.length === 0) return [];
+
+        // Cartas clave = 2+ copias, excluyendo tierras básicas
+        const keyCards = mainboard
+            .filter(card => card.quantity >= 2)
+            .filter(card => !this.isBasicLand(card.name))
             .map(card => ({
                 name: card.name,
-                weight: Math.min(card.quantity * 20, 95), // Peso basado en cantidad
+                weight: this.calculateCardWeight(card),
                 probability: this.calculateCardProbability(card),
-                role: card.role || this.inferCardRole(card.name),
-                copies: card.quantity
+                role: this.inferCardRole(card.name),
+                quantity: card.quantity,
+                imageUrl: card.imageUrl
             }))
             .sort((a, b) => b.weight - a.weight)
-            .slice(0, 12);
+            .slice(0, 12); // Top 12 key cards
+
+        return keyCards;
     }
 
     /**
-     * 🔍 Identificar cartas comunes
+     * 🎯 Verificar si una carta es signature
      */
-    identifyCommonCards(deck) {
-        const mainboard = deck.mainboard || [];
-        
-        return mainboard
-            .filter(card => card.quantity >= 2)
-            .map(card => ({
-                name: card.name,
-                copies: card.quantity,
-                role: this.inferCardRole(card.name)
-            }))
-            .slice(0, 20);
-    }
-
-    // Métodos auxiliares...
-    
-    calculateCardProbability(card) {
-        return Math.min(card.quantity / 4, 0.95);
-    }
-
-    inferCardRole(cardName) {
+    isSignatureCard(cardName) {
         const name = cardName.toLowerCase();
         
-        if (name.includes('bolt') || name.includes('shock') || name.includes('removal')) return 'removal';
-        if (name.includes('teferi') || name.includes('jace') || name.includes('planeswalker')) return 'planeswalker';
-        if (name.includes('counterspell') || name.includes('negate') || name.includes('counter')) return 'counter';
-        if (name.includes('mountain') || name.includes('island') || name.includes('land')) return 'mana';
+        // Cartas que son claramente signature de arquetipos específicos
+        const signaturePatterns = [
+            'cauldron', 'atraxa', 'leyline', 'teferi', 'sheoldred',
+            'monastery swiftspear', 'goblin guide', 'supreme verdict',
+            'wedding announcement', 'up the beanstalk', 'omnath'
+        ];
         
-        return 'threat';
-    }
-
-    inferStrategy(deck, archetype) {
-        const strategies = {
-            aggro: 'Presiona rápidamente con criaturas eficientes',
-            control: 'Controla el juego hasta desplegar win conditions',
-            midrange: 'Intercambia recursos eficientemente',
-            combo: 'Ensambla piezas de combo para ganar',
-            ramp: 'Acelera maná para amenazas grandes',
-            tempo: 'Despliega amenazas mientras disrumpe'
-        };
-
-        return strategies[archetype] || 'Estrategia adaptativa';
-    }
-
-    inferWeakness(deck, archetype) {
-        const weaknesses = {
-            aggro: 'Lifegain, board wipes, blockers grandes',
-            control: 'Presión agresiva temprana',
-            midrange: 'Estrategias especializadas',
-            combo: 'Disrupción y contrahechizos',
-            ramp: 'Aggro rápido y disrupción de maná',
-            tempo: 'Removal masivo'
-        };
-
-        return weaknesses[archetype] || 'Vulnerabilidades situacionales';
-    }
-
-    detectArchetype(deck) {
-        return deck.archetype || 'midrange';
-    }
-
-    calculateMetaStats(decks) {
-        const totalShare = decks.reduce((sum, deck) => sum + (deck.metaShare || 0), 0);
+        // No son signature: tierras básicas, cartas genéricas
+        if (this.isBasicLand(cardName)) return false;
+        if (name.includes('mountain') || name.includes('island') || 
+            name.includes('plains') || name.includes('swamp') || 
+            name.includes('forest')) return false;
         
-        const archetypes = {};
-        decks.forEach(deck => {
-            if (!archetypes[deck.archetype]) {
-                archetypes[deck.archetype] = { count: 0, totalShare: 0 };
+        return signaturePatterns.some(pattern => name.includes(pattern)) ||
+               this.isUniqueCardName(name);
+    }
+
+    /**
+     * 🔍 Verificar si es nombre único de carta
+     */
+    isUniqueCardName(name) {
+        // Cartas con nombres largos/únicos tienden a ser signature
+        return name.length > 15 && name.includes(' ') && !name.includes('land');
+    }
+
+    /**
+     * 🎨 Inferir colores desde cartas reales
+     */
+    inferColorsFromRealCards(mainboard) {
+        const colors = new Set();
+        
+        for (const card of mainboard) {
+            const name = card.name.toLowerCase();
+            
+            // Tierras básicas (fuente más confiable)
+            if (name === 'mountain') colors.add('R');
+            if (name === 'island') colors.add('U');
+            if (name === 'swamp') colors.add('B');
+            if (name === 'forest') colors.add('G');
+            if (name === 'plains') colors.add('W');
+            
+            // Patrones en nombres de cartas
+            if (name.includes('lightning') || name.includes('red') || name.includes('fire')) colors.add('R');
+            if (name.includes('counter') || name.includes('blue') || name.includes('draw')) colors.add('U');
+            if (name.includes('destroy') || name.includes('black') || name.includes('death')) colors.add('B');
+            if (name.includes('green') || name.includes('growth') || name.includes('elf')) colors.add('G');
+            if (name.includes('white') || name.includes('angel') || name.includes('heal')) colors.add('W');
+        }
+        
+        return Array.from(colors);
+    }
+
+    /**
+     * 🏗️ Detectar arquetipo desde cartas reales
+     */
+    detectArchetypeFromRealCards(mainboard) {
+        if (!mainboard || mainboard.length === 0) return 'midrange';
+        
+        let aggroScore = 0;
+        let controlScore = 0;
+        let rampScore = 0;
+        
+        for (const card of mainboard) {
+            const name = card.name.toLowerCase();
+            const qty = card.quantity || 1;
+            
+            // Patrones de aggro
+            if (name.includes('bolt') || name.includes('burn') || name.includes('swiftspear') || 
+                name.includes('guide') || name.includes('aggressive')) {
+                aggroScore += qty * 2;
             }
-            archetypes[deck.archetype].count++;
-            archetypes[deck.archetype].totalShare += deck.metaShare || 0;
-        });
-
-        return {
-            totalDecks: decks.length,
-            totalMetaShare: totalShare,
-            averageMetaShare: totalShare / decks.length,
-            archetypes,
-            lastCalculated: new Date().toISOString()
-        };
+            
+            // Patrones de control
+            if (name.includes('counter') || name.includes('verdict') || name.includes('control') ||
+                name.includes('teferi') || name.includes('wrath')) {
+                controlScore += qty * 2;
+            }
+            
+            // Patrones de ramp
+            if (name.includes('ramp') || name.includes('leyline') || name.includes('domain') ||
+                name.includes('atraxa') || name.includes('beanstalk')) {
+                rampScore += qty * 2;
+            }
+        }
+        
+        if (rampScore > Math.max(aggroScore, controlScore)) return 'ramp';
+        if (aggroScore > controlScore + 3) return 'aggro';
+        if (controlScore > aggroScore + 3) return 'control';
+        
+        return 'midrange';
     }
 
-    buildSearchIndices(decks) {
+    /**
+     * 📊 Construir índices de búsqueda por cartas reales
+     */
+    buildRealCardIndices(decks) {
         const indices = {
-            byCard: {},
-            byColor: {},
-            byArchetype: {},
-            byRank: {}
+            byCard: {},      // carta -> [deckIds]
+            byColors: {},    // colores -> [deckIds]
+            byArchetype: {}, // arquetipo -> [deckIds]
+            cardToDecks: {}  // nombre carta -> { deckId: { quantity, role, weight } }
         };
 
         decks.forEach(deck => {
-            // Índice por cartas
-            [...(deck.signatureCards || []), ...(deck.keyCards || [])].forEach(card => {
-                if (!indices.byCard[card.name]) {
-                    indices.byCard[card.name] = [];
+            // Índice por cartas (todas las cartas del mainboard)
+            [...(deck.mainboard || [])].forEach(card => {
+                const cardName = card.name;
+                
+                if (!indices.byCard[cardName]) {
+                    indices.byCard[cardName] = [];
                 }
-                indices.byCard[card.name].push(deck.id);
+                indices.byCard[cardName].push(deck.id);
+                
+                // Índice detallado carta -> deck
+                if (!indices.cardToDecks[cardName]) {
+                    indices.cardToDecks[cardName] = {};
+                }
+                indices.cardToDecks[cardName][deck.id] = {
+                    quantity: card.quantity,
+                    imageUrl: card.imageUrl,
+                    deckName: deck.name,
+                    deckMetaShare: deck.metaShare
+                };
             });
 
             // Índice por colores
             const colorKey = deck.colors.sort().join('');
-            if (!indices.byColor[colorKey]) {
-                indices.byColor[colorKey] = [];
+            if (!indices.byColors[colorKey]) {
+                indices.byColors[colorKey] = [];
             }
-            indices.byColor[colorKey].push(deck.id);
+            indices.byColors[colorKey].push(deck.id);
 
             // Índice por arquetipo
             if (!indices.byArchetype[deck.archetype]) {
                 indices.byArchetype[deck.archetype] = [];
             }
             indices.byArchetype[deck.archetype].push(deck.id);
-
-            // Índice por rank
-            indices.byRank[deck.rank] = deck.id;
         });
 
         return indices;
     }
 
-    calculateDeckMetrics(deck) {
+    // Métodos auxiliares...
+    
+    calculateCardWeight(card) {
+        let weight = card.quantity * 20; // Base: cantidad * 20
+        
+        if (card.quantity === 4) weight += 20; // Bonus por 4 copias
+        if (card.quantity === 3) weight += 10; // Bonus por 3 copias
+        if (this.isSignatureCard(card.name)) weight += 30; // Bonus signature
+        
+        return Math.min(weight, 100);
+    }
+
+    calculateCardProbability(card) {
+        return Math.min(card.quantity / 4 * 0.9, 0.95); // Max 95%
+    }
+
+    inferCardRole(cardName) {
+        const name = cardName.toLowerCase();
+        
+        if (name.includes('bolt') || name.includes('removal') || name.includes('destroy')) return 'removal';
+        if (name.includes('counter') || name.includes('negate')) return 'counter';
+        if (name.includes('teferi') || name.includes('planeswalker')) return 'planeswalker';
+        if (name.includes('swiftspear') || name.includes('guide') || name.includes('creature')) return 'threat';
+        if (this.isBasicLand(cardName)) return 'mana';
+        
+        return 'spell';
+    }
+
+    isBasicLand(cardName) {
+        const exactBasics = ['Mountain', 'Island', 'Swamp', 'Forest', 'Plains'];
+        return exactBasics.includes(cardName);
+    }
+
+    calculateRealMetaStats(decks) {
+        const totalCards = decks.reduce((sum, deck) => 
+            sum + (deck.mainboard?.length || 0) + (deck.sideboard?.length || 0), 0
+        );
+        
+        const uniqueCards = new Set();
+        decks.forEach(deck => {
+            [...(deck.mainboard || []), ...(deck.sideboard || [])].forEach(card => {
+                uniqueCards.add(card.name);
+            });
+        });
+
         return {
-            confidence: this.calculateConfidenceScore(deck),
-            consistency: this.calculateConsistencyScore(deck),
-            power: this.calculatePowerScore(deck)
+            totalDecks: decks.length,
+            totalCards,
+            uniqueCards: uniqueCards.size,
+            averageCardsPerDeck: Math.round(totalCards / decks.length),
+            decksWithImages: decks.filter(d => d.deckImage).length,
+            cardsWithImages: decks.reduce((sum, deck) => 
+                sum + (deck.mainboard?.filter(c => c.imageUrl).length || 0), 0
+            )
         };
     }
 
-    calculateConfidenceScore(deck) {
-        let score = 0;
-        
-        if (deck.keyCards?.length >= 5) score += 30;
-        if (deck.metaShare > 10) score += 25;
-        if (deck.mainboard?.length >= 50) score += 25;
-        if (deck.colors?.length > 0) score += 20;
-        
-        return Math.min(score, 100);
-    }
-
-    calculateConsistencyScore(deck) {
-        return Math.floor(Math.random() * 40) + 60;
-    }
-
-    calculatePowerScore(deck) {
-        const metaScore = (deck.metaShare || 0) * 3;
-        const rankScore = deck.rank ? Math.max(0, 100 - deck.rank * 5) : 0;
-        
-        return Math.min(metaScore + rankScore, 100);
+    normalizeCardName(name) {
+        return name.toLowerCase()
+            .trim()
+            .replace(/[^a-z0-9\s]/g, '')
+            .replace(/\s+/g, ' ');
     }
 
     generateDeckId(name) {
@@ -592,7 +524,31 @@ class DatabaseManager {
             .substring(0, 30);
     }
 
-    // Métodos de cache y estado...
+    inferStrategy(archetype, deckName) {
+        const strategies = {
+            aggro: 'Presiona rápidamente con criaturas eficientes y burn',
+            control: 'Controla el juego con counters y removal hasta win conditions',
+            midrange: 'Intercambia recursos eficientemente con amenazas sólidas',
+            ramp: 'Acelera maná para desplegar amenazas grandes rápidamente',
+            combo: 'Ensambla piezas específicas para ganar'
+        };
+
+        return strategies[archetype] || 'Estrategia adaptativa basada en value';
+    }
+
+    inferWeakness(archetype, deckName) {
+        const weaknesses = {
+            aggro: 'Board wipes, lifegain masivo y blockers grandes',
+            control: 'Presión agresiva temprana y cartas uncounterable',
+            midrange: 'Estrategias más especializadas y combos',
+            ramp: 'Aggro muy rápido antes de estabilizar',
+            combo: 'Disrupción específica y contrahechizos'
+        };
+
+        return weaknesses[archetype] || 'Depende del build específico';
+    }
+
+    // Métodos de cache y estado (sin cambios significativos)...
     
     async loadCachedData() {
         try {
@@ -600,7 +556,7 @@ class DatabaseManager {
             
             if (cached) {
                 this.currentMetaData = JSON.parse(cached);
-                this.log('📁 Datos cargados desde cache local');
+                this.log('📁 Datos con cartas reales cargados desde cache');
                 return this.currentMetaData;
             }
 
@@ -616,10 +572,20 @@ class DatabaseManager {
         try {
             localStorage.setItem(this.cacheKeys.metaData, JSON.stringify(data));
             localStorage.setItem(this.cacheKeys.lastUpdate, Date.now().toString());
-            this.log('💾 Datos guardados en cache local');
+            this.log('💾 Datos con cartas reales guardados en cache');
         } catch (error) {
             this.logError('Error guardando en cache:', error);
         }
+    }
+
+    needsUpdate() {
+        if (!this.currentMetaData) return true;
+        
+        const lastUpdate = this.getLastUpdateTimestamp();
+        const now = Date.now();
+        const timeSinceUpdate = now - lastUpdate;
+
+        return timeSinceUpdate >= this.config.maxCacheAge;
     }
 
     getLastUpdateTimestamp() {
@@ -648,7 +614,7 @@ class DatabaseManager {
     }
 
     async forceUpdate() {
-        this.log('🔄 Forzando actualización...');
+        this.log('🔄 Forzando actualización con cartas reales...');
         this.clearUpdateTimestamp();
         return await this.updateData();
     }
@@ -671,6 +637,17 @@ class DatabaseManager {
         }
     }
 
+    getDataSource() {
+        if (!this.currentMetaData) return 'none';
+        
+        const source = this.currentMetaData.source || '';
+        
+        if (source.includes('Real-Cards')) return 'real-cards';
+        if (source.includes('Fallback')) return 'fallback';
+        
+        return 'unknown';
+    }
+
     getStats() {
         const status = this.getUpdateStatus();
         const lastUpdate = this.getLastUpdateTimestamp();
@@ -681,9 +658,10 @@ class DatabaseManager {
             needsUpdate: this.needsUpdate(),
             lastUpdate: lastUpdate ? new Date(lastUpdate).toISOString() : null,
             deckCount: this.currentMetaData?.deckCount || 0,
+            totalRealCards: this.currentMetaData?.totalRealCards || 0,
             status: status?.status || 'unknown',
             dataSource: this.getDataSource(),
-            dataFreshness: this.currentMetaData?.dataFreshness || 'unknown',
+            hasRealCards: this.hasRealCards(),
             config: this.config
         };
     }
@@ -697,17 +675,36 @@ class DatabaseManager {
         }
     }
 
+    async getMetaData(forceUpdate = false) {
+    try {
+        if (forceUpdate) {
+            return await this.forceUpdate();
+        }
+        
+        if (!this.currentMetaData) {
+            this.log('⚠️ No hay datos disponibles');
+            return null;
+        }
+        
+        return this.currentMetaData;
+    } catch (error) {
+        this.logError('Error obteniendo meta data:', error);
+        return this.currentMetaData;
+    }
+}
     getCurrentMetaData() {
         return this.currentMetaData;
     }
 
+   
+
     log(message, data = null) {
         if (!this.debugMode) return;
-        console.log(`🗄️ [DatabaseManager] ${message}`, data || '');
+        console.log(`🗄️ [DatabaseManager-Real] ${message}`, data || '');
     }
 
     logError(message, error = null) {
-        console.error(`❌ [DatabaseManager] ${message}`, error || '');
+        console.error(`❌ [DatabaseManager-Real] ${message}`, error || '');
     }
 }
 

@@ -3,407 +3,185 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MTG Arena Sniffer - Predictor de Mazos</title>
+    <title>MTG Arena Sniffer - Detector de Mazos</title>
     
-    <!-- CSS principal -->
-    <link rel="stylesheet" href="../css/main.css">
+    <!-- CSS único -->
+    <link rel="stylesheet" href="css/main.css">
     
-    <!-- Meta tags -->
-    <meta name="description" content="Predictor inteligente de mazos para MTG Arena. Detecta el mazo del oponente en tiempo real.">
-    <meta name="keywords" content="MTG, Magic Arena, deck predictor, meta, standard">
-    
-    <!-- Favicon (opcional, comentado si no existe) -->
-    <!-- <link rel="icon" type="image/x-icon" href="../assets/icons/icon.png"> -->
+    <style>
+        /* Loading crítico inline */
+        .initial-loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(135deg, #1e1e1e, #2d2d30);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            transition: opacity 0.5s ease;
+        }
+
+        .initial-loading.hidden {
+            opacity: 0;
+            visibility: hidden;
+        }
+
+        .loading-logo {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            animation: pulse 2s infinite;
+        }
+
+        .loading-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #007AFF;
+            margin-bottom: 0.5rem;
+        }
+
+        .loading-spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top: 3px solid #007AFF;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 1rem;
+        }
+
+        .loading-status {
+            color: #8E8E93;
+            font-size: 0.875rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.1); opacity: 0.8; }
+        }
+
+        #app {
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+
+        #app.loaded {
+            opacity: 1;
+        }
+    </style>
 </head>
 <body>
-    <!-- Contenedor principal de la aplicación -->
+    <!-- Splash screen -->
+    <div id="initial-loading" class="initial-loading">
+        <div class="loading-logo">🔍</div>
+        <div class="loading-title">MTG Arena Sniffer</div>
+        <div class="loading-spinner"></div>
+        <div id="loading-status" class="loading-status">Inicializando...</div>
+    </div>
+
+    <!-- App container -->
     <div id="app">
-        <!-- Loading inicial -->
-        <div class="loading-overlay visible" id="initial-loading">
-            <div class="loading-spinner"></div>
-            <div class="loading-text">Inicializando MTG Arena Sniffer...</div>
-            <div class="loading-steps" id="loading-steps">
-                <div class="step">🗄️ Cargando base de datos...</div>
-            </div>
-        </div>
+        <!-- El contenido se genera aquí -->
     </div>
 
     <!-- Script principal -->
     <script type="module">
-        import MTGArenaSnifferApp from './presentation/components/MTGArenaSnifferApp.js';
-        
-        // Variables globales
-        window.mtgApp = null;
-        window.debugMode = true;
-        
-        // Función para actualizar pasos de carga
-        function updateLoadingStep(step) {
-            const stepsContainer = document.getElementById('loading-steps');
-            if (stepsContainer) {
-                stepsContainer.innerHTML = `<div class="step">${step}</div>`;
+        function updateLoadingStatus(message) {
+            const statusElement = document.getElementById('loading-status');
+            if (statusElement) {
+                statusElement.textContent = message;
             }
         }
-        
-        // Función principal de inicialización
+
+        function hideSplashScreen() {
+            const splash = document.getElementById('initial-loading');
+            const app = document.getElementById('app');
+            
+            if (splash && app) {
+                splash.classList.add('hidden');
+                app.classList.add('loaded');
+                
+                setTimeout(() => {
+                    splash.style.display = 'none';
+                }, 500);
+            }
+        }
+
+        function showError(error) {
+            const splash = document.getElementById('initial-loading');
+            if (splash) {
+                splash.innerHTML = `
+                    <div style="background: rgba(255, 59, 48, 0.1); border: 1px solid #FF3B30; border-radius: 12px; padding: 2rem; max-width: 500px; text-align: center;">
+                        <h1 style="color: #FF3B30; margin-bottom: 1rem;">❌ Error de Carga</h1>
+                        <p>No se pudo cargar MTG Arena Sniffer</p>
+                        <p style="font-size: 0.875rem; color: #8E8E93; margin: 1rem 0;">${error.message}</p>
+                        <button onclick="location.reload()" style="background: #007AFF; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; color: white; cursor: pointer; margin: 0.5rem;">
+                            🔄 Reintentar
+                        </button>
+                        <button onclick="window.open('src/index.html', '_blank')" style="background: #8E8E93; border: none; padding: 0.75rem 1.5rem; border-radius: 8px; color: white; cursor: pointer; margin: 0.5rem;">
+                            🔧 Modo Debug
+                        </button>
+                    </div>
+                `;
+            }
+        }
+
         async function initializeApp() {
             try {
-                console.log('🚀 Iniciando MTG Arena Sniffer con arquitectura completa...');
-                updateLoadingStep('🏗️ Inicializando arquitectura...');
+                updateLoadingStatus('Verificando compatibilidad...');
                 
-                // Crear instancia de la aplicación principal
-                window.mtgApp = new MTGArenaSnifferApp();
-                
-                updateLoadingStep('🗄️ Conectando con base de datos...');
-                
-                // Inicializar aplicación completa con toda la arquitectura
-                await window.mtgApp.initialize();
-                
-                updateLoadingStep('✅ Aplicación lista');
-                
-                console.log('✅ MTG Arena Sniffer inicializado correctamente');
-                console.log('📊 Estadísticas de la app:', window.mtgApp.getAppStats());
-                
-                // Ocultar loading inicial
-                const loadingOverlay = document.getElementById('initial-loading');
-                if (loadingOverlay) {
-                    setTimeout(() => {
-                        loadingOverlay.classList.remove('visible');
-                        loadingOverlay.classList.add('hidden');
-                    }, 1000);
+                if (!window.fetch || !window.Promise || !window.localStorage) {
+                    throw new Error('Navegador no compatible');
                 }
+
+                updateLoadingStatus('Cargando módulos...');
+                const { bootstrap } = await import('./src/main.js');
                 
-                // Mostrar notificación de bienvenida
-                setTimeout(() => {
-                    if (window.mtgApp.uiService) {
-                        window.mtgApp.uiService.showNotification({
-                            type: 'success',
-                            title: '🎉 MTG Arena Sniffer',
-                            message: 'Sistema listo para predecir mazos del oponente',
-                            duration: 5000
-                        });
-                    }
-                }, 1500);
+                updateLoadingStatus('Inicializando sistema...');
+                await bootstrap();
                 
-                // Mostrar información inicial en consola
-                setTimeout(() => {
-                    console.log(`
-🎮 MTG Arena Sniffer - Sistema Inicializado
+                updateLoadingStatus('¡Listo!');
+                setTimeout(hideSplashScreen, 500);
 
-📊 Estado del Sistema:
-   • Base de datos: ${window.mtgApp.databaseManager?.getStats().deckCount || 0} mazos cargados
-   • Motor de predicción: Activo
-   • Componentes UI: ${Object.keys(window.mtgApp.components).length} cargados
-
-🎯 Cómo usar:
-   1. Añade cartas del oponente usando el panel izquierdo
-   2. Observa las predicciones en tiempo real
-   3. El sistema auto-confirmará mazos al 95% de certeza
-
-🔧 Funciones de debug disponibles:
-   • debugApp() - Información del sistema
-   • resetGame() - Reiniciar partida
-   • testSequence() - Secuencia de prueba
-   • forceUpdate() - Actualizar base de datos
-
-💡 Los datos vienen directamente de MTGGoldfish (scraped)
-                    `);
-                }, 2000);
-                
             } catch (error) {
-                console.error('❌ Error inicializando aplicación:', error);
-                showInitializationError(error);
+                console.error('Error:', error);
+                updateLoadingStatus('Error de inicialización');
+                setTimeout(() => showError(error), 1000);
             }
         }
-        
-        // Función para mostrar errores de inicialización
-        function showInitializationError(error) {
-            const appContainer = document.getElementById('app');
-            
-            appContainer.innerHTML = `
-                <div class="mtg-sniffer-app theme-dark">
-                    <div class="error-container">
-                        <div class="error-content">
-                            <div class="error-header">
-                                <div class="error-icon">❌</div>
-                                <h2>Error de Inicialización</h2>
-                            </div>
-                            
-                            <div class="error-details">
-                                <div class="error-message">
-                                    <strong>Error:</strong> ${error.message}
-                                </div>
-                                
-                                <div class="error-suggestions">
-                                    <h4>💡 Posibles soluciones:</h4>
-                                    <ul>
-                                        <li><strong>Conexión:</strong> Verifica tu conexión a internet</li>
-                                        <li><strong>CORS:</strong> Desactiva temporalmente extensiones/AdBlock</li>
-                                        <li><strong>Cache:</strong> Recarga con Ctrl+F5</li>
-                                        <li><strong>Navegador:</strong> Prueba en modo incógnito</li>
-                                    </ul>
-                                </div>
-                                
-                                <div class="error-actions">
-                                    <button class="btn btn-primary" onclick="location.reload()">
-                                        🔄 Reintentar
-                                    </button>
-                                    <button class="btn btn-secondary" onclick="console.error('${error.stack}')">
-                                        🔧 Ver en Consola
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-        
-        // Funciones globales para debugging y control
-        window.debugApp = function() {
-            console.group('🔧 MTG Arena Sniffer - Debug Info');
-            
-            if (window.mtgApp) {
-                console.log('📊 App Stats:', window.mtgApp.getAppStats());
-                console.log('🎮 Game Service:', window.mtgApp.gameService?.getStats());
-                console.log('🗄️ Database:', window.mtgApp.databaseManager?.getStats());
-                console.log('🎯 Prediction Engine:', window.mtgApp.predictionEngine?.getStats());
-                console.log('📡 Event Bus:', window.EventBus?.getStats());
-                console.log('🎨 UI Service:', window.mtgApp.uiService?.getUIState());
-            } else {
-                console.log('❌ Aplicación no inicializada');
-            }
-            
-            console.groupEnd();
-        };
-        
-        window.resetGame = async function() {
-            if (window.mtgApp) {
-                console.log('↻ Reiniciando juego...');
-                await window.mtgApp.resetGame();
-                console.log('✅ Juego reiniciado');
-            } else {
-                console.log('❌ App no disponible');
-            }
-        };
-        
-        window.forceUpdate = async function() {
-            if (window.mtgApp) {
-                console.log('🔄 Forzando actualización de base de datos...');
-                try {
-                    await window.mtgApp.forceUpdate();
-                    console.log('✅ Base de datos actualizada');
-                } catch (error) {
-                    console.error('❌ Error en actualización:', error);
-                }
-            } else {
-                console.log('❌ App no disponible');
-            }
-        };
-        
-        window.testSequence = async function() {
-            if (!window.mtgApp?.gameService) {
-                console.log('❌ GameService no disponible');
-                return;
-            }
-            
-            console.log('🧪 Iniciando secuencia de test con cartas reales...');
-            
-            // Secuencia basada en un mazo típico de Mono Red Aggro
-            const testCards = [
-                { name: 'Mountain', turn: 1 },
-                { name: 'Monastery Swiftspear', turn: 1 },
-                { name: 'Mountain', turn: 2 },
-                { name: 'Lightning Bolt', turn: 2 },
-                { name: 'Mountain', turn: 3 },
-                { name: 'Goblin Guide', turn: 3 },
-                { name: 'Lightning Strike', turn: 4 }
-            ];
 
-            for (let i = 0; i < testCards.length; i++) {
-                const card = testCards[i];
-                
-                console.log(`🧪 [${i + 1}/${testCards.length}] Añadiendo: ${card.name} (Turno ${card.turn})`);
-                
-                try {
-                    // Actualizar turno
-                    window.mtgApp.gameService.setTurn(card.turn);
-                    
-                    // Añadir carta
-                    await window.mtgApp.gameService.addOpponentCard({
-                        name: card.name,
-                        turn: card.turn,
-                        timestamp: Date.now()
-                    });
-                    
-                    // Pausa entre cartas
-                    if (i < testCards.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, 1500));
-                    }
-                    
-                } catch (error) {
-                    console.error(`❌ Error añadiendo ${card.name}:`, error);
-                }
-            }
-            
-            console.log('✅ Secuencia de test completada');
-            console.log('📊 Estado final:', window.mtgApp.gameService.getStats());
-        };
+        // Detectar modo test
+        const isTest = window.location.search.includes('test=true');
         
-        // Función para añadir carta manualmente
-        window.addCard = async function(cardName, turn = null) {
-            if (!window.mtgApp?.gameService) {
-                console.log('❌ GameService no disponible');
-                return;
-            }
-            
-            const currentTurn = turn || window.mtgApp.gameService.gameState.currentTurn || 1;
-            
-            try {
-                await window.mtgApp.gameService.addOpponentCard({
-                    name: cardName,
-                    turn: currentTurn,
-                    timestamp: Date.now()
-                });
-                
-                console.log(`✅ Carta añadida: ${cardName} (Turno ${currentTurn})`);
-            } catch (error) {
-                console.error(`❌ Error añadiendo carta: ${error.message}`);
-            }
-        };
-        
-        // Manejo de errores globales
-        window.addEventListener('error', (event) => {
-            console.error('❌ Error no capturado:', event.error);
-            
-            if (window.mtgApp?.uiService) {
-                window.mtgApp.uiService.showNotification({
-                    type: 'error',
-                    title: 'Error Inesperado',
-                    message: 'Se ha producido un error. Revisa la consola para más detalles.',
-                    duration: 5000
-                });
-            }
-        });
-        
-        window.addEventListener('unhandledrejection', (event) => {
-            console.error('❌ Promesa rechazada:', event.reason);
-            event.preventDefault();
-        });
-        
-        // Inicializar cuando el DOM esté listo
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', initializeApp);
+        if (isTest) {
+            updateLoadingStatus('Modo de pruebas...');
+            setTimeout(() => {
+                window.location.href = 'src/index.html';
+            }, 1000);
         } else {
-            initializeApp();
+            if (document.readyState === 'loading') {
+                document.addEventListener('DOMContentLoaded', initializeApp);
+            } else {
+                initializeApp();
+            }
         }
-        
-    </script>
 
-    <!-- Estilos adicionales -->
-    <style>
-        /* Loading Steps */
-        .loading-steps {
-            margin-top: 1rem;
-            opacity: 0.8;
-        }
-        
-        .loading-steps .step {
-            font-size: 0.875rem;
-            color: var(--text-secondary);
-        }
-        
-        /* Error Container */
-        .error-container {
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 2rem;
-        }
-        
-        .error-content {
-            max-width: 600px;
-            background: var(--bg-tertiary);
-            border-radius: 12px;
-            border: 1px solid var(--border-color);
-            overflow: hidden;
-        }
-        
-        .error-header {
-            background: var(--error-color);
-            color: white;
-            padding: 2rem;
-            text-align: center;
-        }
-        
-        .error-icon {
-            font-size: 3rem;
-            margin-bottom: 1rem;
-        }
-        
-        .error-header h2 {
-            margin: 0;
-            font-size: 1.5rem;
-        }
-        
-        .error-details {
-            padding: 2rem;
-        }
-        
-        .error-message {
-            background: rgba(255, 59, 48, 0.1);
-            border: 1px solid var(--error-color);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-bottom: 1.5rem;
-            font-family: monospace;
-            font-size: 0.875rem;
-        }
-        
-        .error-suggestions {
-            margin-bottom: 2rem;
-        }
-        
-        .error-suggestions h4 {
-            color: var(--warning-color);
-            margin-bottom: 1rem;
-        }
-        
-        .error-suggestions ul {
-            list-style: none;
-            padding: 0;
-        }
-        
-        .error-suggestions li {
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border-color);
-        }
-        
-        .error-suggestions li:last-child {
-            border-bottom: none;
-        }
-        
-        .error-actions {
-            display: flex;
-            gap: 1rem;
-            justify-content: center;
-        }
-        
-        /* Responsive */
-        @media (max-width: 768px) {
-            .error-container {
-                padding: 1rem;
-            }
-            
-            .error-header,
-            .error-details {
-                padding: 1.5rem;
-            }
-            
-            .error-actions {
-                flex-direction: column;
-            }
-        }
-    </style>
+        // Error handlers
+        window.addEventListener('error', (e) => {
+            if (!window.mtgApp) showError(e.error);
+        });
+
+        window.addEventListener('unhandledrejection', (e) => {
+            if (!window.mtgApp) showError(new Error('Error: ' + e.reason));
+        });
+    </script>
 </body>
 </html>

@@ -63,16 +63,10 @@ class GameService {
             // Procesar con prediction engine
             const result = await this.predictionEngine.addOpponentCard(enrichedCard);
             
-            // Emitir eventos apropiados
-            if (result.confirmed) {
-                this.gameState.isConfirmed = true;
-                this.gameState.confirmedDeck = result.deck;
-                this.eventBus.emit(GAME_EVENTS.DECK_CONFIRMED, result.deck);
-            } else {
-                this.eventBus.emit(GAME_EVENTS.DECK_PREDICTION_UPDATED, {
-                    predictions: result.predictions,
-                    cardAdded: enrichedCard
-                });
+           // AÑADIR:
+            if (!result) {
+    this.log('⚠️ No se pudo procesar la carta (sin datos del meta)');
+    return { confirmed: false, predictions: [] };
             }
             
             return result;

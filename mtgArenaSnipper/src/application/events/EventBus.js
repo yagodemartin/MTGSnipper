@@ -239,8 +239,8 @@ class EventBus {
     }
 }
 
-// Definir eventos estándar de la aplicación
-export const GAME_EVENTS = {
+// Definir eventos estándar de la aplicación - ❗ SIN export aquí
+const GAME_EVENTS = {
     // Eventos de juego
     GAME_STARTED: 'game:started',
     GAME_ENDED: 'game:ended',
@@ -327,5 +327,6 @@ if (typeof window !== 'undefined') {
     };
 }
 
+// ✅ Exportación única sin duplicados
 export { EventBus, GAME_EVENTS };
 export default eventBus;

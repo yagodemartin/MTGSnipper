@@ -1,21 +1,20 @@
 // src/presentation/components/MTGArenaSnifferApp.js
-// 🏗️ Aplicación principal con Clean Architecture
+// 🏗️ Aplicación principal con Clean Architecture - IMPORTS CORREGIDOS
 
 import DatabaseManager from '../../infrastructure/data/DatabaseManager.js';
-import DeckPredictionEngine from '../../core/usecases/DeckPredictionEngine.js';
+import DeckPredictionEngine from '../../infrastructure/data/DeckPredictionEngine.js';
 import EventBus, { GAME_EVENTS } from '../../application/events/EventBus.js';
 
-// Componentes UI
-import HeaderComponent from './ui/HeaderComponent.js';
-import CardInputComponent from './ui/CardInputComponent.js';
-import PredictionsComponent from './ui/PredictionsComponent.js';
-import ConfirmedDeckComponent from './ui/ConfirmedDeckComponent.js';
-import StatusComponent from './ui/StatusComponent.js';
-import DebugComponent from './ui/DebugComponent.js';
+// Componentes UI - RUTAS CORREGIDAS
+import HeaderComponent from './HeaderComponent.js';
+import CardInputComponent from './CardInputComponent.js';
+import PredictionsComponent from './PredictionsComponent.js';
+import ConfirmedDeckComponent from './ConfirmedDeckComponent.js';
+import StatusComponent from './StatusComponent.js';
+import DebugComponent from './DebugComponent.js';
 
-// Servicios de aplicación
-import GameService from '../../application/services/GameService.js';
-import UIService from '../../application/services/UIService.js';
+// Servicios de aplicación - RUTAS CORREGIDAS
+import { GameService, UIService, CardService } from '../../application/services/GameService.js';
 
 /**
  * 🎮 Aplicación principal - Orchestrator de componentes
@@ -86,12 +85,15 @@ class MTGArenaSnifferApp {
             this.log('✅ MTGArenaSniffer inicializado completamente');
             this.eventBus.emit(GAME_EVENTS.SYSTEM_READY, { component: 'MTGArenaSnifferApp' });
 
+            return { success: true };
+
         } catch (error) {
             this.logError('❌ Error inicializando aplicación:', error);
             this.setState({ 
                 isLoading: false, 
                 error: error.message 
             });
+            throw error;
         }
     }
 
@@ -192,8 +194,8 @@ class MTGArenaSnifferApp {
         });
 
         // Eventos de UI
-        this.eventBus.on('ui:view-changed', (data) => {
-            this.handleViewChanged(data.view);
+        this.eventBus.on('ui:view-change-requested', (data) => {
+            this.handleViewChangeRequested(data);
         });
 
         this.eventBus.on('ui:card-added', (data) => {
@@ -292,7 +294,7 @@ class MTGArenaSnifferApp {
                 <!-- Loading Overlay -->
                 <div id="loading-overlay" class="loading-overlay ${this.state.isLoading ? 'visible' : 'hidden'}">
                     <div class="loading-spinner"></div>
-                    <div class="loading-text">Inicializando MTGArenaSniffer...</div>
+                    <div class="loading-text">Procesando...</div>
                 </div>
 
                 <!-- Error Modal -->
@@ -313,7 +315,17 @@ class MTGArenaSnifferApp {
     async renderComponents() {
         const renderPromises = Object.entries(this.components).map(async ([name, component]) => {
             try {
-                const containerId = `${name.replace(/([A-Z])/g, '-$1').toLowerCase()}-container`;
+                // Mapear nombres de componentes a IDs de contenedores
+                const containerMap = {
+                    header: 'header-container',
+                    cardInput: 'card-input-container', 
+                    predictions: 'predictions-container',
+                    confirmedDeck: 'confirmed-deck-container',
+                    status: 'status-container',
+                    debug: 'debug-container'
+                };
+                
+                const containerId = containerMap[name];
                 const container = document.getElementById(containerId);
                 
                 if (container && component.render) {
@@ -363,17 +375,24 @@ class MTGArenaSnifferApp {
     }
 
     /**
+     * 🎯 Manejar solicitud de cambio de vista
+     */
+    handleViewChangeRequested(data) {
+        this.changeView(data.view);
+    }
+
+    /**
      * 🃏 Manejar adición de carta
      */
     async handleCardAdded(data) {
         try {
             this.log('🃏 Carta añadida por usuario', data);
             
-            // Delegar al GameService
-            await this.gameService.addOpponentCard(data.card);
+            // La carta ya fue procesada por el GameService a través del CardInputComponent
+            // Solo necesitamos emitir evento para logging/tracking
             
         } catch (error) {
-            this.logError('Error añadiendo carta:', error);
+            this.logError('Error procesando carta añadida:', error);
             this.uiService.showNotification({
                 type: 'error',
                 title: 'Error',
@@ -392,18 +411,15 @@ class MTGArenaSnifferApp {
         this.log(`👀 Cambiando vista: ${this.state.currentView} → ${newView}`);
 
         // Ocultar vista actual
-        const currentContainer = document.querySelector(
-            `.view-section.active`
-        );
+        const currentContainer = document.querySelector('.view-section.active');
         if (currentContainer) {
             currentContainer.classList.remove('active');
             currentContainer.classList.add('hidden');
         }
 
         // Mostrar nueva vista
-        const newContainer = document.getElementById(
-            `${newView.replace(/([A-Z])/g, '-$1').toLowerCase()}-container`
-        );
+        const newContainer = document.getElementById(`${newView}-container`) || 
+                           document.getElementById(`${newView}s-container`);
         if (newContainer) {
             newContainer.classList.remove('hidden');
             newContainer.classList.add('active');

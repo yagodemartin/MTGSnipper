@@ -1,5 +1,5 @@
 // src/core/usecases/DeckPredictionEngine.js
-// 🎯 Motor de predicción inteligente con datos actualizados del meta
+// 🎯 Motor de predicción con cartas REALES y threshold 85%
 
 class DeckPredictionEngine {
     constructor(databaseManager) {
@@ -11,20 +11,21 @@ class DeckPredictionEngine {
             turn: 0,
             colorsDetected: new Set(),
             playPattern: [],
-            gameNumber: 1 // Para sideboard detection
+            gameNumber: 1
         };
 
-        // Configuración del algoritmo
+        // Configuración actualizada para cartas reales
         this.config = {
-            confirmationThreshold: 0.95,    // 95% para auto-confirmar
-            minCardsForPrediction: 2,       // Mínimo 2 cartas para predecir
-            maxPredictions: 5,              // Top 5 predicciones
-            decayFactor: 0.9,               // Decay para cartas antiguas
+            confirmationThreshold: 0.85,    // 85% para auto-confirmar
+            minCardsForPrediction: 2,       // Solo 2 cartas mínimo
+            maxPredictions: 6,              // Top 6 predicciones
+            decayFactor: 0.9,
             bonusMultipliers: {
-                signature: 2.0,             // Signature cards x2
-                meta_popular: 1.5,          // Mazos populares x1.5
-                color_match: 1.3,           // Match exacto de colores x1.3
-                turn_timing: 1.2            // Timing correcto x1.2
+                signature: 3.0,             // Signature cards x3 (muy importantes)
+                exact_match: 2.5,           // Match exacto x2.5
+                key_card: 2.0,              // Key cards x2
+                color_match: 1.5,           // Colores correctos x1.5
+                archetype_bonus: 1.3        // Bonus por arquetipo x1.3
             }
         };
 
@@ -32,11 +33,11 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 🎯 Método principal: añadir carta del oponente y actualizar predicciones
+     * 🎯 Añadir carta del oponente con cartas REALES
      */
     async addOpponentCard(cardData) {
         try {
-            this.log(`🃏 Nueva carta del oponente: ${cardData.name}`);
+            this.log(`🃏 Nueva carta: ${cardData.name}`);
 
             // Enriquecer datos de la carta
             const enrichedCard = this.enrichCardData(cardData);
@@ -52,49 +53,56 @@ class DeckPredictionEngine {
                 return this.updateConfirmedDeckTracking(enrichedCard);
             }
             
-            // Generar nuevas predicciones
-            const predictions = await this.generatePredictions();
+            // Generar predicciones con cartas reales
+            const predictions = await this.generateRealCardPredictions();
             
-            // Verificar auto-confirmación
+            // Verificar auto-confirmación al 85%
             const autoConfirmed = this.checkAutoConfirmation(predictions);
             
             if (autoConfirmed) {
-                this.log(`🎯 Mazo AUTO-CONFIRMADO: ${autoConfirmed.deck.name}`);
+                this.log(`🎯 MAZO AUTO-CONFIRMADO al ${(autoConfirmed.probability * 100).toFixed(1)}%: ${autoConfirmed.deck.name}`);
                 this.confirmedDeck = autoConfirmed;
                 return { confirmed: true, deck: autoConfirmed };
             }
             
             this.predictions = predictions;
-            return { confirmed: false, predictions };
+            return { 
+                confirmed: false, 
+                predictions,
+                cardsAnalyzed: this.opponentCards.length
+            };
 
-        } catch (error) {
-            this.logError('Error añadiendo carta del oponente:', error);
-            return { confirmed: false, predictions: this.predictions };
-        }
+       // CAMBIAR EL CATCH POR:
+} catch (error) {
+    this.logError('Error añadiendo carta del oponente:', error);
+    return null; // Retornar null si no se puede procesar
+}
     }
 
     /**
-     * 🧠 Generar predicciones basadas en cartas jugadas
+     * 🧠 Generar predicciones basadas en cartas REALES
      */
-    async generatePredictions() {
+    async generateRealCardPredictions() {
         try {
             if (this.opponentCards.length < this.config.minCardsForPrediction) {
+                this.log(`⏳ Solo ${this.opponentCards.length} cartas, necesito ${this.config.minCardsForPrediction} mínimo`);
                 return [];
             }
 
-            // Obtener datos del meta actualizados
+            // Obtener datos del meta con cartas reales
             const metaData = await this.db.getMetaData();
             
-            if (!metaData?.decks) {
-                this.log('⚠️ No hay datos del meta disponibles');
-                return [];
-            }
+   // CAMBIAR LA CONDICIÓN POR:
+if (!metaData?.decks || metaData.decks.length === 0) {
+    this.log('⚠️ No hay datos del meta disponibles');
+    return [];
+}
 
-            this.log(`🔍 Analizando ${this.opponentCards.length} cartas contra ${metaData.decks.length} mazos...`);
+            this.log(`🔍 Analizando ${this.opponentCards.length} cartas contra ${metaData.decks.length} mazos REALES...`);
 
-            // Calcular scores para cada mazo
+            // Calcular scores usando cartas reales
             const deckScores = metaData.decks.map(deck => {
-                const score = this.calculateDeckScore(deck);
+                const score = this.calculateRealCardScore(deck);
                 return {
                     deck,
                     score: score.total,
@@ -102,11 +110,12 @@ class DeckPredictionEngine {
                     probability: this.calculateProbability(score.total, deck),
                     confidence: this.calculateConfidence(score.total, deck),
                     matchedCards: score.matchedCards,
-                    reasoning: score.reasoning
+                    reasoning: score.reasoning,
+                    visualData: this.extractVisualData(deck, score.matchedCards)
                 };
             });
 
-            // Filtrar y ordenar predicciones
+            // Filtrar y ordenar
             const validPredictions = deckScores
                 .filter(prediction => prediction.score > 0)
                 .sort((a, b) => b.score - a.score)
@@ -115,7 +124,14 @@ class DeckPredictionEngine {
             // Normalizar probabilidades
             this.normalizeProbabilities(validPredictions);
 
-            this.log(`📊 Generadas ${validPredictions.length} predicciones válidas`);
+            this.log(`📊 ${validPredictions.length} predicciones generadas con cartas reales`);
+            
+            // Log de top prediction para debug
+            if (validPredictions.length > 0) {
+                const top = validPredictions[0];
+                this.log(`🥇 Top: ${top.deck.name} (${(top.probability * 100).toFixed(1)}%) - ${top.matchedCards.length} matches`);
+            }
+
             return validPredictions;
 
         } catch (error) {
@@ -125,42 +141,43 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 🧮 Calcular score de un mazo específico
+     * 🧮 Calcular score usando cartas REALES del mazo
      */
-    calculateDeckScore(deck) {
+    calculateRealCardScore(deck) {
         let totalScore = 0;
         const breakdown = {};
         const matchedCards = [];
         const reasoning = [];
 
-        // 1. Score por cartas signature (confirman el mazo)
-        const signatureScore = this.calculateSignatureScore(deck);
+        // 1. Score por cartas signature REALES (peso máximo)
+        const signatureScore = this.calculateRealSignatureScore(deck);
         totalScore += signatureScore.score;
         breakdown.signature = signatureScore.score;
         matchedCards.push(...signatureScore.matches);
         reasoning.push(...signatureScore.reasoning);
 
-        // 2. Score por cartas clave
-        const keyCardScore = this.calculateKeyCardScore(deck);
+        // 2. Score por cartas clave REALES
+        const keyCardScore = this.calculateRealKeyCardScore(deck);
         totalScore += keyCardScore.score;
         breakdown.keyCards = keyCardScore.score;
         matchedCards.push(...keyCardScore.matches);
         reasoning.push(...keyCardScore.reasoning);
 
-        // 3. Score por compatibilidad de colores
-        const colorScore = this.calculateColorScore(deck);
+        // 3. Score por match exacto en mainboard
+        const exactMatchScore = this.calculateExactMatchScore(deck);
+        totalScore += exactMatchScore.score;
+        breakdown.exactMatch = exactMatchScore.score;
+        matchedCards.push(...exactMatchScore.matches);
+        reasoning.push(...exactMatchScore.reasoning);
+
+        // 4. Score por compatibilidad de colores
+        const colorScore = this.calculateColorCompatibilityScore(deck);
         totalScore += colorScore.score;
         breakdown.colors = colorScore.score;
         reasoning.push(...colorScore.reasoning);
 
-        // 4. Score por timing/curva
-        const timingScore = this.calculateTimingScore(deck);
-        totalScore += timingScore.score;
-        breakdown.timing = timingScore.score;
-        reasoning.push(...timingScore.reasoning);
-
         // 5. Bonus por popularidad en el meta
-        const metaBonus = this.calculateMetaBonus(deck);
+        const metaBonus = this.calculateMetaPopularityBonus(deck);
         totalScore += metaBonus.score;
         breakdown.metaBonus = metaBonus.score;
         reasoning.push(...metaBonus.reasoning);
@@ -180,14 +197,18 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 🎯 Score por cartas signature (peso máximo)
+     * 🎯 Score por cartas signature REALES
      */
-    calculateSignatureScore(deck) {
+    calculateRealSignatureScore(deck) {
         let score = 0;
         const matches = [];
         const reasoning = [];
 
-        (deck.signatureCards || []).forEach(signatureCard => {
+        if (!deck.signatureCards || deck.signatureCards.length === 0) {
+            return { score: 0, matches: [], reasoning: [] };
+        }
+
+        deck.signatureCards.forEach(signatureCard => {
             const playedCard = this.findPlayedCard(signatureCard.name);
             
             if (playedCard) {
@@ -198,10 +219,13 @@ class DeckPredictionEngine {
                     card: signatureCard.name,
                     type: 'signature',
                     score: cardScore,
-                    turn: playedCard.turn
+                    turn: playedCard.turn,
+                    imageUrl: signatureCard.imageUrl,
+                    quantity: signatureCard.quantity
                 });
                 
-                reasoning.push(`SIGNATURE: ${signatureCard.name} (+${cardScore.toFixed(0)})`);
+                reasoning.push(`🎯 SIGNATURE: ${signatureCard.name} (+${cardScore.toFixed(0)})`);
+                this.log(`🎯 SIGNATURE HIT: ${signatureCard.name} = +${cardScore.toFixed(0)} points`);
             }
         });
 
@@ -209,23 +233,27 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 🔑 Score por cartas clave
+     * 🔑 Score por cartas clave REALES
      */
-    calculateKeyCardScore(deck) {
+    calculateRealKeyCardScore(deck) {
         let score = 0;
         const matches = [];
         const reasoning = [];
 
-        (deck.keyCards || []).forEach(keyCard => {
+        if (!deck.keyCards || deck.keyCards.length === 0) {
+            return { score: 0, matches: [], reasoning: [] };
+        }
+
+        deck.keyCards.forEach(keyCard => {
             const playedCard = this.findPlayedCard(keyCard.name);
             
             if (playedCard) {
-                let cardScore = keyCard.weight || 50;
+                let cardScore = keyCard.weight * this.config.bonusMultipliers.key_card;
                 
                 // Bonus por timing correcto
                 if (this.isCorrectTiming(playedCard, keyCard)) {
-                    cardScore *= this.config.bonusMultipliers.turn_timing;
-                    reasoning.push(`TIMING: ${keyCard.name} jugada en turno correcto`);
+                    cardScore *= 1.2;
+                    reasoning.push(`⏰ TIMING: ${keyCard.name} en turno correcto`);
                 }
                 
                 score += cardScore;
@@ -235,10 +263,51 @@ class DeckPredictionEngine {
                     type: 'key',
                     score: cardScore,
                     role: keyCard.role,
-                    turn: playedCard.turn
+                    turn: playedCard.turn,
+                    imageUrl: keyCard.imageUrl,
+                    quantity: keyCard.quantity
                 });
                 
-                reasoning.push(`KEY: ${keyCard.name} (+${cardScore.toFixed(0)})`);
+                reasoning.push(`🔑 KEY: ${keyCard.name} (+${cardScore.toFixed(0)})`);
+                this.log(`🔑 KEY CARD HIT: ${keyCard.name} = +${cardScore.toFixed(0)} points`);
+            }
+        });
+
+        return { score, matches, reasoning };
+    }
+
+    /**
+     * 🎯 Score por match exacto en mainboard
+     */
+    calculateExactMatchScore(deck) {
+        let score = 0;
+        const matches = [];
+        const reasoning = [];
+
+        if (!deck.mainboard || deck.mainboard.length === 0) {
+            return { score: 0, matches: [], reasoning: [] };
+        }
+
+        this.opponentCards.forEach(playedCard => {
+            const deckCard = deck.mainboard.find(card => 
+                this.normalizeCardName(card.name) === this.normalizeCardName(playedCard.name)
+            );
+            
+            if (deckCard) {
+                const cardScore = 30 * this.config.bonusMultipliers.exact_match;
+                score += cardScore;
+                
+                matches.push({
+                    card: deckCard.name,
+                    type: 'exact',
+                    score: cardScore,
+                    turn: playedCard.turn,
+                    imageUrl: deckCard.imageUrl,
+                    quantity: deckCard.quantity
+                });
+                
+                reasoning.push(`✅ EXACT: ${deckCard.name} (+${cardScore.toFixed(0)})`);
+                this.log(`✅ EXACT MATCH: ${deckCard.name} = +${cardScore.toFixed(0)} points`);
             }
         });
 
@@ -248,7 +317,7 @@ class DeckPredictionEngine {
     /**
      * 🎨 Score por compatibilidad de colores
      */
-    calculateColorScore(deck) {
+    calculateColorCompatibilityScore(deck) {
         let score = 0;
         const reasoning = [];
 
@@ -259,58 +328,26 @@ class DeckPredictionEngine {
             return { score: 0, reasoning: ['Sin colores detectados aún'] };
         }
 
-        // Verificar incompatibilidad
+        // Verificar incompatibilidad total
         const incompatibleColors = detectedColors.filter(color => 
             !deckColors.includes(color)
         );
 
         if (incompatibleColors.length > 0) {
-            score = -50; // Penalty por colores incompatibles
-            reasoning.push(`INCOMPATIBLE: Colores ${incompatibleColors.join(', ')} no están en el mazo`);
+            score = -100; // Penalty severo por colores incompatibles
+            reasoning.push(`❌ INCOMPATIBLE: ${incompatibleColors.join(', ')} no están en el mazo`);
             return { score, reasoning };
         }
 
-        // Bonus por match exacto
+        // Bonus por match de colores
         if (detectedColors.length === deckColors.length && 
             detectedColors.every(color => deckColors.includes(color))) {
             
-            score = 25 * this.config.bonusMultipliers.color_match;
-            reasoning.push(`COLOR MATCH: Colores exactos ${detectedColors.join('')}`);
+            score = 40 * this.config.bonusMultipliers.color_match;
+            reasoning.push(`🎨 COLOR PERFECT: ${detectedColors.join('')} match exacto (+${score.toFixed(0)})`);
         } else {
-            // Bonus parcial por colores compatibles
-            score = 15;
-            reasoning.push(`COLOR OK: Colores compatibles ${detectedColors.join('')}`);
-        }
-
-        return { score, reasoning };
-    }
-
-    /**
-     * ⏰ Score por timing de jugadas
-     */
-    calculateTimingScore(deck) {
-        let score = 0;
-        const reasoning = [];
-
-        // Analizar si las cartas se juegan en turnos típicos del arquetipo
-        const expectedCurve = deck.expectedCurve || {};
-        let correctTimingCount = 0;
-
-        this.opponentCards.forEach(playedCard => {
-            const turn = playedCard.turn;
-            const expectedForTurn = expectedCurve[`turn${turn}`] || [];
-            
-            if (expectedForTurn.some(expected => 
-                playedCard.name.toLowerCase().includes(expected.toLowerCase()) ||
-                expected.toLowerCase().includes(playedCard.name.toLowerCase())
-            )) {
-                correctTimingCount++;
-                score += 10;
-            }
-        });
-
-        if (correctTimingCount > 0) {
-            reasoning.push(`TIMING: ${correctTimingCount} cartas en timing correcto (+${score})`);
+            score = 20;
+            reasoning.push(`🎨 COLOR OK: ${detectedColors.join('')} compatible (+${score})`);
         }
 
         return { score, reasoning };
@@ -319,21 +356,21 @@ class DeckPredictionEngine {
     /**
      * 📈 Bonus por popularidad en el meta
      */
-    calculateMetaBonus(deck) {
+    calculateMetaPopularityBonus(deck) {
         let score = 0;
         const reasoning = [];
 
         const metaShare = deck.metaShare || 0;
         
         if (metaShare > 15) {
-            score = 20 * this.config.bonusMultipliers.meta_popular;
-            reasoning.push(`META: Mazo muy popular ${metaShare.toFixed(1)}% (+${score.toFixed(0)})`);
+            score = 25;
+            reasoning.push(`📈 META TOP: ${metaShare.toFixed(1)}% del meta (+${score})`);
         } else if (metaShare > 10) {
-            score = 10;
-            reasoning.push(`META: Mazo popular ${metaShare.toFixed(1)}% (+${score})`);
+            score = 15;
+            reasoning.push(`📈 META HIGH: ${metaShare.toFixed(1)}% del meta (+${score})`);
         } else if (metaShare > 5) {
-            score = 5;
-            reasoning.push(`META: Mazo jugado ${metaShare.toFixed(1)}% (+${score})`);
+            score = 8;
+            reasoning.push(`📈 META MID: ${metaShare.toFixed(1)}% del meta (+${score})`);
         }
 
         return { score, reasoning };
@@ -350,26 +387,25 @@ class DeckPredictionEngine {
         const cardsPlayed = this.opponentCards.length;
         const avgTurn = this.calculateAverageTurn();
 
-        // Modificadores basados en patrón de juego observado
         switch (archetype) {
             case 'aggro':
                 if (cardsPlayed >= 2 && avgTurn <= 3) {
-                    multiplier = 1.2;
-                    reasoning.push('AGGRO: Patrón rápido detectado (+20%)');
+                    multiplier = this.config.bonusMultipliers.archetype_bonus;
+                    reasoning.push(`⚡ AGGRO: Patrón rápido detectado (+${((multiplier - 1) * 100).toFixed(0)}%)`);
                 }
                 break;
                 
             case 'control':
                 if (avgTurn >= 3 && this.hasControlPattern()) {
-                    multiplier = 1.15;
-                    reasoning.push('CONTROL: Patrón defensivo detectado (+15%)');
+                    multiplier = this.config.bonusMultipliers.archetype_bonus;
+                    reasoning.push(`🛡️ CONTROL: Patrón defensivo (+${((multiplier - 1) * 100).toFixed(0)}%)`);
                 }
                 break;
                 
             case 'ramp':
                 if (this.hasRampPattern()) {
-                    multiplier = 1.25;
-                    reasoning.push('RAMP: Patrón de aceleración detectado (+25%)');
+                    multiplier = this.config.bonusMultipliers.archetype_bonus;
+                    reasoning.push(`🌱 RAMP: Patrón de aceleración (+${((multiplier - 1) * 100).toFixed(0)}%)`);
                 }
                 break;
         }
@@ -378,16 +414,40 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 📊 Calcular probabilidad normalizada
+     * 🎨 Extraer datos visuales para la UI
+     */
+    extractVisualData(deck, matchedCards) {
+        return {
+            deckImage: deck.deckImage,
+            deckName: deck.name,
+            deckColors: deck.colors,
+            metaShare: deck.metaShare,
+            cardImages: matchedCards
+                .filter(card => card.imageUrl)
+                .slice(0, 4) // Top 4 cartas con imagen
+                .map(card => ({
+                    name: card.card,
+                    imageUrl: card.imageUrl,
+                    quantity: card.quantity
+                })),
+            totalCardsInDeck: (deck.mainboard?.length || 0) + (deck.sideboard?.length || 0)
+        };
+    }
+
+    /**
+     * 📊 Calcular probabilidad mejorada
      */
     calculateProbability(score, deck) {
-        // Probabilidad base del score
-        const baseProb = Math.min(score / 200, 0.9); // Max 90% del score
+        // Probabilidad base del score (más agresiva para llegar a 85%)
+        let baseProb = Math.min(score / 150, 0.92); // Reducido threshold
         
         // Ajuste por meta share
-        const metaAdjustment = (deck.metaShare || 0) / 100 * 0.1; // Max 10% del meta
+        const metaAdjustment = (deck.metaShare || 0) / 100 * 0.15; // Más peso al meta
         
-        return Math.min(baseProb + metaAdjustment, 0.99);
+        // Bonus por número de cartas analizadas
+        const cardCountBonus = Math.min(this.opponentCards.length / 10, 0.1);
+        
+        return Math.min(baseProb + metaAdjustment + cardCountBonus, 0.98);
     }
 
     /**
@@ -396,16 +456,16 @@ class DeckPredictionEngine {
     calculateConfidence(score, deck) {
         const cardsCount = this.opponentCards.length;
         
-        if (score >= 150 && cardsCount >= 4) return 'very-high';
-        if (score >= 100 && cardsCount >= 3) return 'high';
-        if (score >= 50 && cardsCount >= 2) return 'medium';
-        if (score >= 25) return 'low';
+        if (score >= 200 && cardsCount >= 3) return 'very-high';
+        if (score >= 120 && cardsCount >= 2) return 'high';
+        if (score >= 60 && cardsCount >= 2) return 'medium';
+        if (score >= 30) return 'low';
         
         return 'very-low';
     }
 
     /**
-     * ✅ Verificar auto-confirmación
+     * ✅ Verificar auto-confirmación al 85%
      */
     checkAutoConfirmation(predictions) {
         if (predictions.length === 0) return null;
@@ -413,14 +473,15 @@ class DeckPredictionEngine {
         const topPrediction = predictions[0];
         
         // Auto-confirmar si:
-        // 1. Probabilidad >= threshold
-        // 2. Confianza alta
-        // 3. Al menos 3 cartas analizadas
+        // 1. Probabilidad >= 85%
+        // 2. Confianza al menos 'high'
+        // 3. Al menos 2 cartas analizadas
         
         if (topPrediction.probability >= this.config.confirmationThreshold &&
-            topPrediction.confidence === 'very-high' &&
-            this.opponentCards.length >= 3) {
+            ['high', 'very-high'].includes(topPrediction.confidence) &&
+            this.opponentCards.length >= this.config.minCardsForPrediction) {
             
+            this.log(`🎯 AUTO-CONFIRMACIÓN: ${topPrediction.deck.name} - ${(topPrediction.probability * 100).toFixed(1)}%`);
             return topPrediction;
         }
         
@@ -428,33 +489,86 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 🔄 Normalizar probabilidades para que sumen coherentemente
+     * 🔍 Buscar carta jugada (normalizado)
      */
-    normalizeProbabilities(predictions) {
-        if (predictions.length === 0) return;
-        
-        const totalScore = predictions.reduce((sum, p) => sum + p.score, 0);
-        
-        predictions.forEach(prediction => {
-            // Probabilidad relativa basada en score
-            const relativeProb = prediction.score / totalScore;
-            
-            // Mezclar con probabilidad absoluta
-            prediction.probability = (prediction.probability * 0.7) + (relativeProb * 0.3);
-            
-            // Asegurar que la top predicción sea la más alta
-            if (prediction === predictions[0]) {
-                prediction.probability = Math.max(prediction.probability, 0.4);
-            }
-        });
-        
-        // Asegurar orden por probabilidad
-        predictions.sort((a, b) => b.probability - a.probability);
+    findPlayedCard(cardName) {
+        const normalized = this.normalizeCardName(cardName);
+        return this.opponentCards.find(card => 
+            card.normalizedName === normalized ||
+            this.normalizeCardName(card.name) === normalized
+        );
     }
 
     /**
-     * 🃏 Enriquecer datos de carta
+     * 📊 Actualizar tracking del mazo confirmado
      */
+    updateConfirmedDeckTracking(newCard) {
+        if (!this.confirmedDeck) return null;
+        
+        const deck = this.confirmedDeck.deck;
+        const isExpectedCard = this.isCardExpectedInDeck(newCard, deck);
+        
+        if (isExpectedCard) {
+            this.log(`✅ Carta esperada en ${deck.name}: ${newCard.name}`);
+        } else {
+            this.log(`⚠️ Carta inesperada en ${deck.name}: ${newCard.name}`);
+        }
+        
+        return {
+            confirmed: true,
+            deck: this.confirmedDeck,
+            newCard: {
+                name: newCard.name,
+                expected: isExpectedCard,
+                turn: newCard.turn,
+                imageUrl: this.getCardImageFromDeck(newCard.name, deck)
+            }
+        };
+    }
+
+    /**
+     * 🖼️ Obtener imagen de carta desde el mazo
+     */
+    getCardImageFromDeck(cardName, deck) {
+        const allCards = [...(deck.mainboard || []), ...(deck.sideboard || [])];
+        const card = allCards.find(c => 
+            this.normalizeCardName(c.name) === this.normalizeCardName(cardName)
+        );
+        return card?.imageUrl || null;
+    }
+
+    /**
+     * 🔍 Verificar si carta es esperada en el mazo
+     */
+    isCardExpectedInDeck(card, deck) {
+        const cardName = this.normalizeCardName(card.name);
+        
+        // Verificar en signature cards
+        if (deck.signatureCards?.some(sig => 
+            this.normalizeCardName(sig.name) === cardName
+        )) {
+            return true;
+        }
+        
+        // Verificar en key cards
+        if (deck.keyCards?.some(key => 
+            this.normalizeCardName(key.name) === cardName
+        )) {
+            return true;
+        }
+        
+        // Verificar en mainboard completo
+        if (deck.mainboard?.some(mb => 
+            this.normalizeCardName(mb.name) === cardName
+        )) {
+            return true;
+        }
+        
+        return false;
+    }
+
+    // Métodos auxiliares...
+    
     enrichCardData(cardData) {
         return {
             ...cardData,
@@ -465,9 +579,6 @@ class DeckPredictionEngine {
         };
     }
 
-    /**
-     * 🎮 Actualizar contexto del juego
-     */
     updateGameContext(card) {
         // Detectar colores
         const colors = this.detectCardColors(card);
@@ -477,7 +588,6 @@ class DeckPredictionEngine {
         this.gameContext.playPattern.push({
             turn: this.gameContext.turn,
             card: card.name,
-            type: card.type,
             colors: colors
         });
         
@@ -487,50 +597,35 @@ class DeckPredictionEngine {
         }
     }
 
-    /**
-     * 🔍 Buscar carta jugada
-     */
-    findPlayedCard(cardName) {
-        const normalized = this.normalizeCardName(cardName);
-        return this.opponentCards.find(card => 
-            card.normalizedName === normalized ||
-            card.name.toLowerCase().includes(cardName.toLowerCase()) ||
-            cardName.toLowerCase().includes(card.name.toLowerCase())
-        );
+    detectCardColors(card) {
+        const colors = [];
+        const name = card.name.toLowerCase();
+        
+        // Tierras básicas
+        if (name.includes('mountain')) colors.push('R');
+        if (name.includes('island')) colors.push('U');
+        if (name.includes('swamp')) colors.push('B');
+        if (name.includes('forest')) colors.push('G');
+        if (name.includes('plains')) colors.push('W');
+        
+        return [...new Set(colors)];
     }
 
-    /**
-     * ⏰ Verificar timing correcto
-     */
     isCorrectTiming(playedCard, keyCard) {
-        // Heurística simple para timing
         const turn = playedCard.turn;
         const cardName = keyCard.name.toLowerCase();
         
-        // Cartas de 1 mana en turnos 1-2
-        if (turn <= 2 && (cardName.includes('bolt') || cardName.includes('guide'))) {
-            return true;
-        }
-        
-        // Planeswalkers en turnos 3+
-        if (turn >= 3 && cardName.includes('teferi')) {
-            return true;
-        }
-        
-        // Cartas caras en turnos tardíos
-        if (turn >= 5 && cardName.includes('atraxa')) {
-            return true;
-        }
+        // Heurísticas básicas de timing
+        if (turn <= 2 && (cardName.includes('bolt') || cardName.includes('guide'))) return true;
+        if (turn >= 3 && cardName.includes('teferi')) return true;
+        if (turn >= 5 && cardName.includes('atraxa')) return true;
         
         return false;
     }
 
-    /**
-     * 🛡️ Detectar patrón de control
-     */
     hasControlPattern() {
         const recentCards = this.opponentCards.slice(-3);
-        const controlWords = ['counterspell', 'removal', 'draw', 'wrath', 'teferi'];
+        const controlWords = ['counter', 'verdict', 'teferi', 'control'];
         
         return recentCards.some(card => 
             controlWords.some(word => 
@@ -539,11 +634,8 @@ class DeckPredictionEngine {
         );
     }
 
-    /**
-     * 🌱 Detectar patrón de ramp
-     */
     hasRampPattern() {
-        const rampWords = ['explore', 'rampant', 'growth', 'land', 'mana'];
+        const rampWords = ['leyline', 'beanstalk', 'ramp', 'domain'];
         
         return this.opponentCards.some(card =>
             rampWords.some(word =>
@@ -552,9 +644,6 @@ class DeckPredictionEngine {
         );
     }
 
-    /**
-     * 📊 Calcular turno promedio
-     */
     calculateAverageTurn() {
         if (this.opponentCards.length === 0) return 0;
         
@@ -562,49 +651,18 @@ class DeckPredictionEngine {
         return totalTurns / this.opponentCards.length;
     }
 
-    /**
-     * 🎨 Detectar colores de carta
-     */
-    detectCardColors(card) {
-        const colors = [];
-        const name = card.name.toLowerCase();
-        const manaCost = card.manaCost || '';
+    normalizeProbabilities(predictions) {
+        if (predictions.length === 0) return;
         
-        // Por costo de maná
-        if (manaCost.includes('W')) colors.push('W');
-        if (manaCost.includes('U')) colors.push('U');
-        if (manaCost.includes('B')) colors.push('B');
-        if (manaCost.includes('R')) colors.push('R');
-        if (manaCost.includes('G')) colors.push('G');
+        // Asegurar que la top prediction tenga al menos probabilidad razonable
+        if (predictions[0]) {
+            predictions[0].probability = Math.max(predictions[0].probability, 0.3);
+        }
         
-        // Por nombres conocidos
-        if (name.includes('mountain')) colors.push('R');
-        if (name.includes('island')) colors.push('U');
-        if (name.includes('swamp')) colors.push('B');
-        if (name.includes('forest')) colors.push('G');
-        if (name.includes('plains')) colors.push('W');
-        
-        // Por cartas específicas conocidas
-        const colorMap = {
-            'lightning bolt': ['R'],
-            'counterspell': ['U'],
-            'thoughtseize': ['B'],
-            'llanowar elves': ['G'],
-            'swords to plowshares': ['W']
-        };
-        
-        Object.entries(colorMap).forEach(([cardName, cardColors]) => {
-            if (name.includes(cardName)) {
-                colors.push(...cardColors);
-            }
-        });
-        
-        return [...new Set(colors)]; // Remove duplicates
+        // Ordenar por probabilidad final
+        predictions.sort((a, b) => b.probability - a.probability);
     }
 
-    /**
-     * 🔧 Normalizar nombre de carta
-     */
     normalizeCardName(name) {
         return name.toLowerCase()
             .trim()
@@ -628,67 +686,7 @@ class DeckPredictionEngine {
     }
 
     /**
-     * 📊 Actualizar tracking del mazo confirmado
-     */
-    updateConfirmedDeckTracking(newCard) {
-        if (!this.confirmedDeck) return null;
-        
-        // Verificar si la nueva carta encaja con el mazo confirmado
-        const deck = this.confirmedDeck.deck;
-        const isExpectedCard = this.isCardExpectedInDeck(newCard, deck);
-        
-        if (isExpectedCard) {
-            this.log(`✅ Carta esperada en ${deck.name}: ${newCard.name}`);
-        } else {
-            this.log(`⚠️ Carta inesperada en ${deck.name}: ${newCard.name}`);
-        }
-        
-        return {
-            confirmed: true,
-            deck: this.confirmedDeck,
-            newCard: {
-                name: newCard.name,
-                expected: isExpectedCard,
-                turn: newCard.turn
-            }
-        };
-    }
-
-    /**
-     * 🔍 Verificar si carta es esperada en el mazo
-     */
-    isCardExpectedInDeck(card, deck) {
-        const cardName = card.name.toLowerCase();
-        
-        // Verificar en signature cards
-        if (deck.signatureCards?.some(sig => 
-            cardName.includes(sig.name.toLowerCase()) ||
-            sig.name.toLowerCase().includes(cardName)
-        )) {
-            return true;
-        }
-        
-        // Verificar en key cards
-        if (deck.keyCards?.some(key => 
-            cardName.includes(key.name.toLowerCase()) ||
-            key.name.toLowerCase().includes(cardName)
-        )) {
-            return true;
-        }
-        
-        // Verificar en mainboard
-        if (deck.mainboard?.some(mb => 
-            cardName.includes(mb.name.toLowerCase()) ||
-            mb.name.toLowerCase().includes(cardName)
-        )) {
-            return true;
-        }
-        
-        return false;
-    }
-
-    /**
-     * 🔄 Reiniciar predictor para nueva partida
+     * 🔄 Reiniciar para nueva partida
      */
     reset() {
         this.predictions = [];
@@ -701,7 +699,7 @@ class DeckPredictionEngine {
             gameNumber: this.gameContext.gameNumber + 1
         };
         
-        this.log('🔄 Predictor reiniciado para nueva partida');
+        this.log('🔄 PredictionEngine reiniciado para nueva partida');
     }
 
     /**
@@ -723,27 +721,23 @@ class DeckPredictionEngine {
             predictionsCount: this.predictions.length,
             isConfirmed: !!this.confirmedDeck,
             confirmedDeck: this.confirmedDeck?.deck?.name || null,
-            gameNumber: this.gameContext.gameNumber
+            gameNumber: this.gameContext.gameNumber,
+            topPrediction: this.predictions.length > 0 ? {
+                name: this.predictions[0].deck.name,
+                probability: this.predictions[0].probability,
+                confidence: this.predictions[0].confidence
+            } : null
         };
     }
 
-    /**
-     * 🔧 Obtener predicciones actuales
-     */
     getCurrentPredictions() {
         return this.predictions;
     }
 
-    /**
-     * 🎯 Obtener mazo confirmado
-     */
     getConfirmedDeck() {
         return this.confirmedDeck;
     }
 
-    /**
-     * ⚙️ Configurar parámetros
-     */
     setConfig(newConfig) {
         this.config = { ...this.config, ...newConfig };
         this.log('⚙️ Configuración actualizada', this.config);
@@ -751,11 +745,11 @@ class DeckPredictionEngine {
 
     log(message, data = null) {
         if (!this.debugMode) return;
-        console.log(`🎯 [PredictionEngine] ${message}`, data || '');
+        console.log(`🎯 [PredictionEngine-Real] ${message}`, data || '');
     }
 
     logError(message, error = null) {
-        console.error(`❌ [PredictionEngine] ${message}`, error || '');
+        console.error(`❌ [PredictionEngine-Real] ${message}`, error || '');
     }
 }
 

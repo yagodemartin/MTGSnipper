@@ -1,5 +1,5 @@
 // src/presentation/components/ui/CardInputComponent.js
-// 🃏 Componente de entrada de cartas
+// 🃏 Componente de entrada de cartas VISUAL con imágenes
 
 import BaseComponent from './BaseComponent.js';
 
@@ -12,7 +12,9 @@ class CardInputComponent extends BaseComponent {
             suggestions: [],
             turn: 1,
             isLoading: false,
-            recentCards: []
+            recentCards: [],
+            showingCardImage: null,
+            imageLoadTimeout: null
         };
     }
 
@@ -26,8 +28,14 @@ class CardInputComponent extends BaseComponent {
             this.setState({ 
                 currentCard: '', 
                 turn: 1, 
-                recentCards: [] 
+                recentCards: [],
+                showingCardImage: null
             });
+        });
+
+        // Escuchar cuando se añaden cartas para mostrar imagen
+        this.eventBus.on('ui:card-added', (data) => {
+            this.showCardPreview(data.card);
         });
     }
 
@@ -35,7 +43,7 @@ class CardInputComponent extends BaseComponent {
         return `
             <div class="card-input-component">
                 <div class="input-header">
-                    <h3>🃏 Cartas del oponente</h3>
+                    <h3>🃏 Cartas del Oponente</h3>
                     <div class="turn-controls">
                         <label for="turn-input">Turno:</label>
                         <input type="number" 
@@ -44,7 +52,7 @@ class CardInputComponent extends BaseComponent {
                                max="20" 
                                value="${this.state.turn}"
                                class="turn-input">
-                        <button id="turn-update-btn" class="btn btn-sm">Actualizar</button>
+                        <button id="turn-update-btn" class="btn btn-sm">📝 Actualizar</button>
                     </div>
                 </div>
 
@@ -59,7 +67,7 @@ class CardInputComponent extends BaseComponent {
                         <button id="add-card-btn" 
                                 class="btn btn-primary"
                                 ${this.state.isLoading ? 'disabled' : ''}>
-                            ${this.state.isLoading ? '⏳' : 'Añadir'}
+                            ${this.state.isLoading ? '⏳ Procesando...' : '➕ Añadir Carta'}
                         </button>
                     </div>
                     
@@ -75,30 +83,112 @@ class CardInputComponent extends BaseComponent {
                     ` : ''}
                 </div>
 
+                <!-- Previsualización de carta añadida -->
+                ${this.state.showingCardImage ? `
+                    <div class="card-preview-container">
+                        <div class="card-preview">
+                            <div class="card-preview-header">
+                                <h4>✅ Carta Añadida</h4>
+                                <button class="close-preview" id="close-preview">✕</button>
+                            </div>
+                            <div class="card-preview-content">
+                                <div class="card-image-container">
+                                    <img src="${this.state.showingCardImage.imageUrl}" 
+                                         alt="${this.state.showingCardImage.name}"
+                                         class="card-preview-image"
+                                         onerror="this.src='https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(this.state.showingCardImage.name)}'">
+                                </div>
+                                <div class="card-preview-info">
+                                    <h5>${this.state.showingCardImage.name}</h5>
+                                    <p><strong>Turno:</strong> ${this.state.showingCardImage.turn}</p>
+                                    <p><strong>Hora:</strong> ${this.formatTime(this.state.showingCardImage.timestamp)}</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                ` : ''}
+
                 <div class="quick-actions">
-                    <h4>🎯 Acciones rápidas</h4>
+                    <h4>🎯 Cartas Rápidas</h4>
                     <div class="quick-buttons">
-                        <button class="btn btn-sm btn-secondary" data-card="Mountain">Mountain</button>
-                        <button class="btn btn-sm btn-secondary" data-card="Island">Island</button>
-                        <button class="btn btn-sm btn-secondary" data-card="Plains">Plains</button>
-                        <button class="btn btn-sm btn-secondary" data-card="Swamp">Swamp</button>
-                        <button class="btn btn-sm btn-secondary" data-card="Forest">Forest</button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Mountain">
+                            🔴 Mountain
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Island">
+                            🔵 Island
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Plains">
+                            ⚪ Plains
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Swamp">
+                            ⚫ Swamp
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Forest">
+                            🟢 Forest
+                        </button>
+                    </div>
+                    
+                    <div class="quick-buttons">
+                        <button class="btn btn-sm btn-quick-card" data-card="Lightning Bolt">
+                            ⚡ Lightning Bolt
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Counterspell">
+                            🚫 Counterspell
+                        </button>
+                        <button class="btn btn-sm btn-quick-card" data-card="Teferi, Hero of Dominaria">
+                            🧙 Teferi
+                        </button>
                     </div>
                 </div>
 
                 ${this.state.recentCards.length > 0 ? `
                     <div class="recent-cards">
-                        <h4>📋 Cartas recientes</h4>
-                        <div class="recent-cards-list">
-                            ${this.state.recentCards.slice(-5).map(card => `
-                                <div class="recent-card">
-                                    <span class="card-name">${card.name}</span>
-                                    <span class="card-turn">T${card.turn}</span>
+                        <h4>📋 Cartas Recientes (${this.state.recentCards.length})</h4>
+                        <div class="recent-cards-visual">
+                            ${this.state.recentCards.slice(-4).reverse().map(card => `
+                                <div class="recent-card-item">
+                                    <div class="recent-card-image">
+                                        ${card.imageUrl ? `
+                                            <img src="${card.imageUrl}" 
+                                                 alt="${card.name}"
+                                                 class="recent-card-img"
+                                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='block';">
+                                            <div class="recent-card-placeholder" style="display: none;">
+                                                🃏
+                                            </div>
+                                        ` : `
+                                            <div class="recent-card-placeholder">🃏</div>
+                                        `}
+                                    </div>
+                                    <div class="recent-card-info">
+                                        <div class="recent-card-name">${card.name}</div>
+                                        <div class="recent-card-turn">T${card.turn}</div>
+                                    </div>
                                 </div>
                             `).join('')}
                         </div>
+                        
+                        ${this.state.recentCards.length > 4 ? `
+                            <div class="recent-cards-count">
+                                +${this.state.recentCards.length - 4} cartas más...
+                            </div>
+                        ` : ''}
                     </div>
-                ` : ''}
+                ` : `
+                    <div class="no-cards-yet">
+                        <div class="no-cards-icon">🎯</div>
+                        <h4>¡Añade la primera carta!</h4>
+                        <p>Introduce el nombre de una carta que haya jugado tu oponente para empezar a predecir su mazo.</p>
+                    </div>
+                `}
+
+                <!-- Botón de análisis manual -->
+                <div class="manual-analysis">
+                    <button class="btn btn-secondary" id="force-analysis" 
+                            ${this.state.recentCards.length < 2 ? 'disabled' : ''}>
+                        🔍 Forzar Análisis (${this.state.recentCards.length} cartas)
+                    </button>
+                </div>
             </div>
         `;
     }
@@ -117,6 +207,9 @@ class CardInputComponent extends BaseComponent {
                     this.addCard();
                 }
             });
+
+            // Focus automático en el input
+            cardInput.focus();
         }
 
         // Botón añadir carta
@@ -150,6 +243,22 @@ class CardInputComponent extends BaseComponent {
                 this.selectSuggestion(index);
             });
         });
+
+        // Cerrar preview
+        const closePreview = this.$('#close-preview');
+        if (closePreview) {
+            this.addEventListener(closePreview, 'click', () => {
+                this.hideCardPreview();
+            });
+        }
+
+        // Forzar análisis
+        const forceAnalysis = this.$('#force-analysis');
+        if (forceAnalysis) {
+            this.addEventListener(forceAnalysis, 'click', () => {
+                this.forceAnalysis();
+            });
+        }
     }
 
     async handleCardInput(value) {
@@ -183,10 +292,15 @@ class CardInputComponent extends BaseComponent {
             };
 
             // Enviar al GameService
-            await this.dependencies.gameService.addOpponentCard(cardData);
+            const result = await this.dependencies.gameService.addOpponentCard(cardData);
 
+            // Obtener imagen de la carta
+            const imageUrl = await this.getCardImage(cardName);
+            
             // Actualizar estado local
-            const recentCards = [...this.state.recentCards, cardData];
+            const cardWithImage = { ...cardData, imageUrl };
+            const recentCards = [...this.state.recentCards, cardWithImage];
+            
             this.setState({ 
                 currentCard: '', 
                 suggestions: [],
@@ -194,8 +308,14 @@ class CardInputComponent extends BaseComponent {
                 isLoading: false 
             });
 
-            // Emitir evento
-            this.eventBus.emit('ui:card-added', { card: cardData });
+            // Emitir evento con imagen
+            this.eventBus.emit('ui:card-added', { card: cardWithImage });
+
+            // Mostrar preview de la carta
+            this.showCardPreview(cardWithImage);
+
+            // Auto-incrementar turno si es la primera carta del turno
+            this.autoIncrementTurn();
 
             this.log(`✅ Carta añadida: ${cardName}`);
 
@@ -230,25 +350,145 @@ class CardInputComponent extends BaseComponent {
                 currentCard: suggestion.name,
                 suggestions: []
             });
+            
+            // Focus en el input después de seleccionar
+            const cardInput = this.$('#card-name-input');
+            if (cardInput) cardInput.focus();
+        }
+    }
+
+    /**
+     * 🖼️ Mostrar preview visual de la carta añadida
+     */
+    showCardPreview(card) {
+        this.setState({ showingCardImage: card });
+        
+        // Auto-ocultar después de 5 segundos
+        if (this.state.imageLoadTimeout) {
+            clearTimeout(this.state.imageLoadTimeout);
+        }
+        
+        this.state.imageLoadTimeout = setTimeout(() => {
+            this.hideCardPreview();
+        }, 5000);
+    }
+
+    /**
+     * 🙈 Ocultar preview de carta
+     */
+    hideCardPreview() {
+        this.setState({ showingCardImage: null });
+        
+        if (this.state.imageLoadTimeout) {
+            clearTimeout(this.state.imageLoadTimeout);
+            this.state.imageLoadTimeout = null;
+        }
+    }
+
+    /**
+     * 🖼️ Obtener imagen de carta
+     */
+    async getCardImage(cardName) {
+        try {
+            // Verificar cache local primero
+            const cacheKey = `card_image_${cardName.toLowerCase().replace(/\s+/g, '_')}`;
+            const cached = localStorage.getItem(cacheKey);
+            
+            if (cached) {
+                return cached;
+            }
+
+            // Obtener desde Scryfall API
+            const response = await fetch(
+                `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`
+            );
+            
+            if (response.ok) {
+                const cardData = await response.json();
+                const imageUrl = cardData.image_uris?.normal || cardData.image_uris?.large;
+                
+                if (imageUrl) {
+                    // Guardar en cache
+                    localStorage.setItem(cacheKey, imageUrl);
+                    return imageUrl;
+                }
+            }
+            
+            // Fallback: imagen placeholder
+            const placeholderUrl = `https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(cardName)}`;
+            localStorage.setItem(cacheKey, placeholderUrl);
+            return placeholderUrl;
+            
+        } catch (error) {
+            this.log(`⚠️ Error obteniendo imagen para ${cardName}: ${error.message}`);
+            return `https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(cardName)}`;
+        }
+    }
+
+    /**
+     * ⚡ Auto-incrementar turno inteligentemente
+     */
+    autoIncrementTurn() {
+        // Solo auto-incrementar si es el primer o segundo carta del turno
+        const cardsThisTurn = this.state.recentCards.filter(card => card.turn === this.state.turn).length;
+        
+        if (cardsThisTurn >= 2) {
+            const newTurn = this.state.turn + 1;
+            this.setState({ turn: newTurn });
+            
+            const turnInput = this.$('#turn-input');
+            if (turnInput) {
+                turnInput.value = newTurn;
+            }
+        }
+    }
+
+    /**
+     * 🔍 Forzar análisis manual
+     */
+    forceAnalysis() {
+        if (this.state.recentCards.length >= 2) {
+            this.log('🔍 Forzando análisis manual...');
+            this.eventBus.emit('predictions:refresh-requested');
         }
     }
 
     async searchCardSuggestions(query) {
-        // Mock de búsqueda - en implementación real usaría CardService
+        // Sugerencias básicas de cartas comunes
         const commonCards = [
             'Lightning Bolt', 'Counterspell', 'Teferi, Hero of Dominaria',
             'Monastery Swiftspear', 'Goblin Guide', 'Atraxa, Grand Unifier',
             'Up the Beanstalk', 'Leyline of the Guildpact', 'Sheoldred, the Apocalypse',
-            'Fable of the Mirror-Breaker', 'Wedding Announcement', 'Raffine, Scheming Seer'
+            'Fable of the Mirror-Breaker', 'Wedding Announcement', 'Raffine, Scheming Seer',
+            'Izzet Cauldron', 'Supreme Verdict', 'Omnath, Locus of All',
+            'Mountain', 'Island', 'Plains', 'Swamp', 'Forest'
         ];
 
         return commonCards
             .filter(card => card.toLowerCase().includes(query.toLowerCase()))
-            .slice(0, 5)
-            .map(name => ({ name, type: 'Unknown' }));
+            .slice(0, 6)
+            .map(name => ({ name, type: 'Carta' }));
+    }
+
+    formatTime(timestamp) {
+        const date = new Date(timestamp);
+        return date.toLocaleTimeString('es-ES', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+        });
     }
 
     showError(message) {
+        // Mostrar error visual en el componente
+        const inputGroup = this.$('.input-group');
+        if (inputGroup) {
+            inputGroup.classList.add('error');
+            setTimeout(() => {
+                inputGroup.classList.remove('error');
+            }, 3000);
+        }
+        
         this.eventBus.emit('ui:notification', {
             type: 'error',
             message: message,
@@ -259,7 +499,15 @@ class CardInputComponent extends BaseComponent {
     shouldRerender(prevState, newState) {
         return prevState.suggestions.length !== newState.suggestions.length ||
                prevState.recentCards.length !== newState.recentCards.length ||
-               prevState.isLoading !== newState.isLoading;
+               prevState.isLoading !== newState.isLoading ||
+               prevState.showingCardImage !== newState.showingCardImage ||
+               prevState.turn !== newState.turn;
+    }
+
+    onCleanup() {
+        if (this.state.imageLoadTimeout) {
+            clearTimeout(this.state.imageLoadTimeout);
+        }
     }
 }
 
