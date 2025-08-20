@@ -1,7 +1,7 @@
-// src/infrastructure/data/MTGGoldfishDynamicScraper.js
+// src/infrastructure/data/MTGGoldfishCompleteScraper.js
 // 🐟 Scraper 100% DINÁMICO - Todo desde MTGGoldfish Online
 
-class MTGGoldfishDynamicScraper {
+class MTGGoldfishCompleteScraper {
     constructor() {
         this.baseUrl = 'https://www.mtggoldfish.com';
         this.metaUrl = '/metagame/standard#paper';
@@ -94,30 +94,35 @@ class MTGGoldfishDynamicScraper {
     }
 
     /**
-     * 🔗 Extraer URLs de arquetipos de la página del meta
+     * 🔗 Extraer URLs de arquetipos de la página del meta - MÉTODO ARREGLADO
      */
     extractArchetypeUrls(html) {
         try {
+            this.log('🔍 Analizando HTML para extraer arquetipos...');
+            this.log(`📄 Tamaño del HTML: ${html.length} caracteres`);
+
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
             const archetyperData = [];
             
-            // Buscar enlaces de arquetipos específicamente de Standard
-            const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/standard"]');
+            // ESTRATEGIA PRINCIPAL: Enlaces de archetype + porcentajes (basada en debug exitoso)
+            this.log('🎯 Buscando enlaces de archetype con porcentajes...');
             
-            this.log(`🔍 Encontrados ${archetypeLinks.length} enlaces de arquetipos Standard`);
+            const archetypeLinks = doc.querySelectorAll('a[href*="archetype"]');
+            this.log(`🔗 Encontrados ${archetypeLinks.length} enlaces de archetype`);
             
             for (const link of archetypeLinks) {
                 const href = link.getAttribute('href');
                 const deckName = this.cleanText(link.textContent);
                 
-                if (!deckName || deckName.length < 3 || !href) {
+                // Filtrar enlaces válidos
+                if (!deckName || deckName.length < 3 || deckName.length > 50 || !href) {
                     continue;
                 }
                 
-                // Buscar el porcentaje en el contexto de la fila
-                const percentage = this.findPercentageInContext(link);
+                // Buscar porcentaje cerca de este enlace usando método mejorado
+                const percentage = this.findPercentageInContextImproved(link);
                 
                 if (percentage && percentage > 0 && percentage <= 50) {
                     archetyperData.push({
@@ -132,9 +137,16 @@ class MTGGoldfishDynamicScraper {
                 }
             }
             
-            // Eliminar duplicados por URL
+            // ESTRATEGIA FALLBACK: Si no encontramos suficientes mazos, usar regex
+            if (archetyperData.length < 5) {
+                this.log('🔄 Estrategia fallback: Regex en HTML...');
+                const regexResults = this.extractWithRegexImproved(html);
+                archetyperData.push(...regexResults);
+            }
+            
+            // Eliminar duplicados por nombre
             const uniqueArchetypes = archetyperData.filter((deck, index, self) => 
-                index === self.findIndex(d => d.url === deck.url)
+                index === self.findIndex(d => d.name === deck.name)
             );
             
             // Ordenar por meta share
@@ -145,6 +157,14 @@ class MTGGoldfishDynamicScraper {
                 deck.rank = index + 1;
             });
             
+            this.log(`✅ Total de arquetipos únicos encontrados: ${uniqueArchetypes.length}`);
+            
+            if (uniqueArchetypes.length > 0) {
+                uniqueArchetypes.slice(0, 5).forEach(deck => {
+                    this.log(`  ${deck.rank}. ${deck.name} (${deck.metaShare}%)`);
+                });
+            }
+            
             return uniqueArchetypes;
 
         } catch (error) {
@@ -154,30 +174,207 @@ class MTGGoldfishDynamicScraper {
     }
 
     /**
-     * 📊 Buscar porcentaje en el contexto de un enlace
+     * 🔄 NUEVA ESTRATEGIA 2: Extraer de todas las filas
      */
-    findPercentageInContext(linkElement) {
-        // Buscar en el elemento padre (fila de tabla)
-        let parent = linkElement.parentElement;
-        let attempts = 0;
+    extractFromAllRows(doc) {
+        const archetyperData = [];
         
-        while (parent && attempts < 5) {
-            const text = parent.textContent;
-            const percentageMatch = text.match(/(\d+\.?\d*)\s*%/);
+        // Buscar en todas las filas de tabla y divs que actúen como filas
+        const allRows = doc.querySelectorAll('tr, div[class*="row"], div[class*="item"], li');
+        this.log(`📊 Analizando ${allRows.length} elementos tipo fila...`);
+        
+        for (const row of allRows) {
+            const rowText = row.textContent;
             
-            if (percentageMatch) {
-                const percentage = parseFloat(percentageMatch[1]);
+            // Buscar porcentaje en la fila
+            const percentageMatch = rowText.match(/(\d+\.?\d*)\s*%/);
+            if (!percentageMatch) continue;
+            
+            const percentage = parseFloat(percentageMatch[1]);
+            if (percentage <= 0 || percentage > 50) continue;
+            
+            // Buscar enlaces en esta fila
+            const links = row.querySelectorAll('a');
+            for (const link of links) {
+                const deckName = this.cleanText(link.textContent);
+                const href = link.getAttribute('href') || '';
+                
+                // Verificar si parece un nombre de mazo válido
+                if (this.looksLikeDeckName(deckName)) {
+                    archetyperData.push({
+                        id: this.generateDeckId(deckName),
+                        name: deckName,
+                        metaShare: percentage,
+                        url: href,
+                        extractedAt: new Date().toISOString()
+                    });
+                    
+                    this.log(`📋 Mazo encontrado en fila: ${deckName} (${percentage}%)`);
+                    break; // Solo tomar el primer enlace válido por fila
+                }
+            }
+        }
+        
+        return archetyperData;
+    }
+
+    /**
+     * 🔄 NUEVA ESTRATEGIA 3: Extraer con patrones de texto
+     */
+    extractWithTextPatterns(html) {
+        const archetyperData = [];
+        
+        // Patrones para capturar nombres de mazos seguidos de porcentajes
+        const patterns = [
+            // Patrón 1: >Deck Name< seguido de porcentaje
+            />([A-Z][a-zA-Z\s\-']{3,30})<[^%]*?(\d+\.?\d*)\s*%/g,
+            // Patrón 2: "Deck Name" con cualquier delimitador seguido de porcentaje
+            /([A-Z][a-z]+\s+[A-Z][a-z]+[a-zA-Z\s]*?)\s+(\d+\.?\d*)\s*%/g,
+            // Patrón 3: href con archetype seguido de nombre y porcentaje
+            /href="[^"]*archetype[^"]*"[^>]*>([^<]+)<[^%]*?(\d+\.?\d*)\s*%/gi
+        ];
+        
+        for (let i = 0; i < patterns.length; i++) {
+            const pattern = patterns[i];
+            this.log(`🔍 Probando patrón de texto ${i + 1}...`);
+            
+            let match;
+            while ((match = pattern.exec(html)) !== null) {
+                const deckName = this.cleanText(match[1]);
+                const metaShare = parseFloat(match[2]);
+                
+                if (this.looksLikeDeckName(deckName) && metaShare > 0 && metaShare <= 50) {
+                    archetyperData.push({
+                        id: this.generateDeckId(deckName),
+                        name: deckName,
+                        metaShare: metaShare,
+                        url: '',
+                        extractedAt: new Date().toISOString()
+                    });
+                    
+                    this.log(`📋 Mazo encontrado con patrón: ${deckName} (${metaShare}%)`);
+                }
+            }
+            
+            if (archetyperData.length > 0) {
+                this.log(`✅ Patrón ${i + 1} encontró ${archetyperData.length} mazos`);
+                break; // Usar el primer patrón que funcione
+            }
+        }
+        
+        return archetyperData;
+    }
+
+    /**
+     * 📊 Buscar porcentaje en contexto mejorado - MÉTODO ARREGLADO
+     */
+    findPercentageInContextImproved(linkElement) {
+        // Método basado en el debug exitoso
+        let current = linkElement;
+        
+        // Buscar en 8 niveles del DOM (más que antes)
+        for (let level = 0; level < 8; level++) {
+            if (!current) break;
+            
+            const text = current.textContent;
+            const match = text.match(/(\d+\.?\d*)\s*%/);
+            
+            if (match) {
+                const percentage = parseFloat(match[1]);
                 if (percentage > 0 && percentage <= 50) {
                     return percentage;
                 }
             }
             
-            parent = parent.parentElement;
-            attempts++;
+            current = current.parentElement;
+        }
+        
+        // También buscar en hermanos del elemento
+        if (linkElement.parentElement) {
+            const siblings = linkElement.parentElement.children;
+            for (const sibling of siblings) {
+                if (sibling === linkElement) continue;
+                
+                const text = sibling.textContent;
+                const match = text.match(/(\d+\.?\d*)\s*%/);
+                
+                if (match) {
+                    const percentage = parseFloat(match[1]);
+                    if (percentage > 0 && percentage <= 50) {
+                        return percentage;
+                    }
+                }
+            }
         }
         
         return null;
     }
+
+    /**
+     * 🔤 Estrategia regex mejorada - basada en debug exitoso
+     */
+    extractWithRegexImproved(html) {
+        const archetyperData = [];
+        
+        // Patrón que funcionó en el debug: href con archetype + texto + porcentaje
+        const pattern = /href="([^"]*archetype[^"]*)"[^>]*>([^<]+)<[^%]*?(\d+\.?\d*)\s*%/gi;
+        let match;
+        
+        while ((match = pattern.exec(html)) !== null) {
+            const url = match[1];
+            const name = this.cleanText(match[2]);
+            const percentage = parseFloat(match[3]);
+            
+            if (name.length > 3 && name.length < 50 && percentage > 0 && percentage <= 50) {
+                archetyperData.push({
+                    id: this.generateDeckId(name),
+                    name: name,
+                    metaShare: percentage,
+                    url: url,
+                    extractedAt: new Date().toISOString()
+                });
+                
+                this.log(`📋 Mazo encontrado con regex: ${name} (${percentage}%)`);
+            }
+        }
+        
+        return archetyperData;
+    }
+
+    /**
+     * 🎯 Verificar si un texto parece nombre de mazo - MÉTODO NUEVO
+     */
+    looksLikeDeckName(text) {
+        if (!text || text.length < 3 || text.length > 50) return false;
+        
+        // Debe tener al menos una letra mayúscula
+        if (!/[A-Z]/.test(text)) return false;
+        
+        // Debe tener al menos algunas letras
+        if (!/[a-zA-Z]{3,}/.test(text)) return false;
+        
+        // Filtrar palabras comunes que NO son nombres de mazos
+        const blacklist = [
+            'home', 'contact', 'about', 'login', 'register', 'search', 'menu', 
+            'click here', 'more', 'view all', 'next', 'previous', 'page',
+            'tournament', 'event', 'date', 'player', 'deck tech', 'budget',
+            'subscribe', 'follow', 'share', 'twitter', 'facebook', 'decks',
+            'format', 'standard', 'modern', 'legacy', 'vintage', 'pioneer'
+        ];
+        
+        const lowerText = text.toLowerCase();
+        if (blacklist.some(word => lowerText.includes(word))) return false;
+        
+        // Debe tener al menos 2 palabras para ser un nombre de mazo típico
+        const words = text.trim().split(/\s+/);
+        if (words.length < 2) return false;
+        
+        return true;
+    }
+
+    // ============================================
+    // RESTO DE MÉTODOS ORIGINALES (sin cambios)
+    // ============================================
 
     /**
      * 🃏 Paso 2: Scrapear listas completas de todos los arquetipos
@@ -505,42 +702,19 @@ class MTGGoldfishDynamicScraper {
     }
 
     /**
-     * 📊 Obtener información completa de una carta desde Scryfall
+     * 🎨 Detectar colores de cartas usando solo datos reales online
      */
-    async getCardInfoFromAPI(cardName) {
-        try {
-            this.log(`🔍 Obteniendo info completa para: ${cardName}`);
-            
-            const response = await fetch(
-                `https://api.scryfall.com/cards/named?exact=${encodeURIComponent(cardName)}`
-            );
-            
-            if (response.ok) {
-                const cardData = await response.json();
-                
-                const cardInfo = {
-                    name: cardData.name,
-                    colors: cardData.colors || [],
-                    cmc: cardData.cmc || 0,
-                    type: cardData.type_line || '',
-                    manaCost: cardData.mana_cost || '',
-                    rarity: cardData.rarity || '',
-                    set: cardData.set || '',
-                    imageUrl: cardData.image_uris?.normal || null,
-                    apiSource: 'scryfall'
-                };
-                
-                this.log(`✅ Info completa obtenida para ${cardName}`);
-                return cardInfo;
-            }
-            
-            this.log(`⚠️ No se encontró información API para: ${cardName}`);
-            return null;
-            
-        } catch (error) {
-            this.log(`❌ Error obteniendo info de API para ${cardName}: ${error.message}`);
-            return null;
+    async detectCardColors(cardName) {
+        // Intentar obtener colores reales desde Scryfall
+        const colors = await this.getCardColorsFromAPI(cardName);
+        
+        // Si no se encuentran en Scryfall, intentar desde MTGGoldfish
+        if (colors.length === 0) {
+            const mtgColors = await this.getCardColorsFromMTGGoldfish(cardName);
+            return mtgColors;
         }
+        
+        return colors;
     }
 
     /**
@@ -568,22 +742,6 @@ class MTGGoldfishDynamicScraper {
             this.log(`❌ Error obteniendo colores para ${cardName}: ${error.message}`);
             return [];
         }
-    }
-
-    /**
-     * 🎨 Detectar colores de cartas usando solo datos reales online
-     */
-    async detectCardColors(cardName) {
-        // Intentar obtener colores reales desde Scryfall
-        const colors = await this.getCardColorsFromAPI(cardName);
-        
-        // Si no se encuentran en Scryfall, intentar desde MTGGoldfish
-        if (colors.length === 0) {
-            const mtgColors = await this.getCardColorsFromMTGGoldfish(cardName);
-            return mtgColors;
-        }
-        
-        return colors;
     }
 
     /**
@@ -798,4 +956,4 @@ class MTGGoldfishDynamicScraper {
     }
 }
 
-export default MTGGoldfishDynamicScraper;
+export default MTGGoldfishCompleteScraper;

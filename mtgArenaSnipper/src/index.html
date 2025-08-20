@@ -3,555 +3,407 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MTG Arena Sniffer - Diagnóstico</title>
+    <title>MTG Arena Sniffer - Predictor de Mazos</title>
     
-    <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background: linear-gradient(135deg, #1e1e1e, #2d2d30);
-            color: white;
-            padding: 1rem;
-            min-height: 100vh;
-        }
-
-        .container {
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 2rem;
-            padding: 2rem;
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 12px;
-        }
-
-        .status {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 1rem;
-            border-radius: 8px;
-            margin-bottom: 1rem;
-            border-left: 4px solid #007AFF;
-        }
-
-        .status.error {
-            border-left-color: #FF3B30;
-        }
-
-        .status.success {
-            border-left-color: #34C759;
-        }
-
-        .status.warning {
-            border-left-color: #FF9500;
-        }
-
-        .console {
-            background: rgba(0, 0, 0, 0.8);
-            border-radius: 8px;
-            padding: 1rem;
-            margin-top: 1rem;
-            font-family: 'Courier New', monospace;
-            font-size: 14px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        .log-line {
-            margin-bottom: 4px;
-            line-height: 1.4;
-        }
-
-        .log-info { color: #00ff88; }
-        .log-error { color: #ff4444; }
-        .log-warn { color: #ffaa00; }
-        .log-success { color: #00ff00; }
-
-        .timestamp {
-            color: #666;
-            margin-right: 8px;
-        }
-
-        .btn {
-            background: linear-gradient(45deg, #007AFF, #5856D6);
-            border: none;
-            padding: 0.75rem 1.5rem;
-            border-radius: 8px;
-            color: white;
-            cursor: pointer;
-            font-weight: 600;
-            margin: 0.5rem;
-            transition: all 0.2s ease;
-        }
-
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 16px rgba(0, 122, 255, 0.3);
-        }
-
-        .btn.secondary {
-            background: linear-gradient(45deg, #8E8E93, #636366);
-        }
-
-        .controls {
-            margin: 1rem 0;
-            text-align: center;
-        }
-
-        .test-results {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 1rem;
-            margin-top: 1rem;
-        }
-
-        .test-card {
-            background: rgba(255, 255, 255, 0.05);
-            border-radius: 8px;
-            padding: 1rem;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-
-        .test-card h3 {
-            color: #007AFF;
-            margin-bottom: 0.5rem;
-        }
-
-        .test-status {
-            display: inline-block;
-            padding: 0.25rem 0.5rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: bold;
-            margin-bottom: 0.5rem;
-        }
-
-        .test-status.pass { background: #34C759; color: white; }
-        .test-status.fail { background: #FF3B30; color: white; }
-        .test-status.pending { background: #FF9500; color: white; }
-    </style>
+    <!-- CSS principal -->
+    <link rel="stylesheet" href="../css/main.css">
+    
+    <!-- Meta tags -->
+    <meta name="description" content="Predictor inteligente de mazos para MTG Arena. Detecta el mazo del oponente en tiempo real.">
+    <meta name="keywords" content="MTG, Magic Arena, deck predictor, meta, standard">
+    
+    <!-- Favicon (opcional, comentado si no existe) -->
+    <!-- <link rel="icon" type="image/x-icon" href="../assets/icons/icon.png"> -->
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>🔍 MTG Arena Sniffer - Diagnóstico</h1>
-            <p>Verificando sistema y conectividad</p>
-        </div>
-
-        <div id="main-status" class="status">
-            <strong>Estado:</strong> <span id="status-text">Iniciando diagnóstico...</span>
-        </div>
-
-        <div class="controls">
-            <button class="btn" onclick="runFullDiagnostic()">🔧 Diagnóstico Completo</button>
-            <button class="btn secondary" onclick="testScraper()">🐟 Test Scraper</button>
-            <button class="btn secondary" onclick="testProxies()">🔗 Test Proxies</button>
-            <button class="btn secondary" onclick="clearLogs()">🗑️ Limpiar Logs</button>
-        </div>
-
-        <div class="test-results" id="test-results">
-            <!-- Los resultados aparecerán aquí -->
-        </div>
-
-        <div class="console" id="console">
-            <div class="log-line log-info">
-                <span class="timestamp">[00:00:00]</span>
-                🚀 Sistema de diagnóstico iniciado
+    <!-- Contenedor principal de la aplicación -->
+    <div id="app">
+        <!-- Loading inicial -->
+        <div class="loading-overlay visible" id="initial-loading">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Inicializando MTG Arena Sniffer...</div>
+            <div class="loading-steps" id="loading-steps">
+                <div class="step">🗄️ Cargando base de datos...</div>
             </div>
         </div>
     </div>
 
-    <script>
-        // Sistema de logging simple
-        class DiagnosticLogger {
-            constructor() {
-                this.logs = [];
-                this.startTime = Date.now();
-                this.consoleElement = document.getElementById('console');
-            }
-
-            log(type, message) {
-                const timestamp = this.getTimestamp();
-                const logEntry = { timestamp, type, message };
-                this.logs.push(logEntry);
-
-                const logLine = document.createElement('div');
-                logLine.className = `log-line log-${type}`;
-                logLine.innerHTML = `
-                    <span class="timestamp">[${timestamp}]</span>
-                    ${message}
-                `;
-
-                this.consoleElement.appendChild(logLine);
-                this.consoleElement.scrollTop = this.consoleElement.scrollHeight;
-            }
-
-            getTimestamp() {
-                const elapsed = Date.now() - this.startTime;
-                const minutes = Math.floor(elapsed / 60000);
-                const seconds = Math.floor((elapsed % 60000) / 1000);
-                const ms = Math.floor((elapsed % 1000) / 10);
-                
-                return `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}.${ms.toString().padStart(2, '0')}`;
-            }
-
-            clear() {
-                this.logs = [];
-                this.consoleElement.innerHTML = `
-                    <div class="log-line log-info">
-                        <span class="timestamp">[${this.getTimestamp()}]</span>
-                        🗑️ Logs limpiados
-                    </div>
-                `;
-            }
-        }
-
-        // Scraper de prueba simplificado
-        class TestScraper {
-            constructor(logger) {
-                this.logger = logger;
-                this.corsProxies = [
-                    'https://api.allorigins.win/raw?url=',
-                    'https://corsproxy.io/?',
-                    'https://cors.bridged.cc/',
-                    'https://thingproxy.freeboard.io/fetch/',
-                    'https://api.allorigins.win/get?url='
-                ];
-            }
-
-            async testMTGGoldfish() {
-                this.logger.log('info', '🐟 Iniciando test de MTGGoldfish...');
-                
-                const targetUrl = 'https://www.mtggoldfish.com/metagame/standard/full#paper';
-                this.logger.log('info', `🎯 URL objetivo: ${targetUrl}`);
-
-                for (let i = 0; i < this.corsProxies.length; i++) {
-                    const proxy = this.corsProxies[i];
-                    
-                    try {
-                        this.logger.log('info', `🔗 Probando proxy ${i + 1}/${this.corsProxies.length}: ${proxy.split('//')[1]?.split('/')[0]}`);
-                        
-                        const proxyUrl = proxy + encodeURIComponent(targetUrl);
-
-                        const response = await Promise.race([
-                            fetch(proxyUrl, {
-                                headers: {
-                                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                                    'Accept': 'text/html,application/xhtml+xml',
-                                }
-                            }),
-                            new Promise((_, reject) => 
-                                setTimeout(() => reject(new Error('Timeout después de 15 segundos')), 15000)
-                            )
-                        ]);
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-                        }
-
-                        let html;
-                        const contentType = response.headers.get('content-type') || '';
-                        
-                        if (contentType.includes('application/json')) {
-                            const data = await response.json();
-                            html = data.contents || data.data || data.body || '';
-                        } else {
-                            html = await response.text();
-                        }
-
-                        if (!html || html.length < 500) {
-                            throw new Error(`Respuesta muy corta: ${html?.length || 0} caracteres`);
-                        }
-
-                        this.logger.log('success', `✅ Proxy exitoso: ${html.length} caracteres recibidos`);
-                        
-                        // Intentar parsear mazos
-                        const decks = this.parseDecks(html);
-                        this.logger.log('success', `📋 Mazos encontrados: ${decks.length}`);
-                        
-                        if (decks.length > 0) {
-                            decks.slice(0, 5).forEach((deck, index) => {
-                                this.logger.log('info', `  ${index + 1}. ${deck.name} (${deck.metaShare}%)`);
-                            });
-                        }
-
-                        return { success: true, proxy, html, decks };
-
-                    } catch (error) {
-                        this.logger.log('error', `❌ Proxy ${i + 1} falló: ${error.message}`);
-                        continue;
-                    }
-                }
-
-                this.logger.log('error', '❌ Todos los proxies fallaron');
-                return { success: false, error: 'Todos los proxies fallaron' };
-            }
-
-            parseDecks(html) {
-                try {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    
-                    const decks = [];
-                    const rows = doc.querySelectorAll('tr');
-                    
-                    this.logger.log('info', `📊 Analizando ${rows.length} filas HTML...`);
-
-                    for (const row of rows) {
-                        const archetypeLink = row.querySelector('a[href*="/archetype/standard"], a[href*="/archetype/"]');
-                        if (!archetypeLink) continue;
-                        
-                        const deckName = this.cleanText(archetypeLink.textContent);
-                        if (!deckName || deckName.length < 3) continue;
-                        
-                        const percentageMatch = row.textContent.match(/(\d+\.?\d*)\s*%/);
-                        if (!percentageMatch) continue;
-                        
-                        const metaShare = parseFloat(percentageMatch[1]);
-                        if (metaShare <= 0 || metaShare > 50) continue;
-                        
-                        decks.push({
-                            name: deckName,
-                            metaShare: metaShare,
-                            url: archetypeLink.getAttribute('href')
-                        });
-                        
-                        this.logger.log('info', `📋 Deck válido: ${deckName} (${metaShare}%)`);
-                    }
-
-                    return decks.sort((a, b) => b.metaShare - a.metaShare);
-
-                } catch (error) {
-                    this.logger.log('error', `❌ Error parseando HTML: ${error.message}`);
-                    return [];
-                }
-            }
-
-            cleanText(text) {
-                if (!text) return '';
-                return text.trim().replace(/\s+/g, ' ').replace(/[^\w\s\-'.,]/g, '').trim();
-            }
-
-            async testProxy(proxy) {
-                try {
-                    const testUrl = 'https://httpbin.org/json';
-                    const proxyUrl = proxy + encodeURIComponent(testUrl);
-                    
-                    const response = await Promise.race([
-                        fetch(proxyUrl),
-                        new Promise((_, reject) => 
-                            setTimeout(() => reject(new Error('Timeout')), 10000)
-                        )
-                    ]);
-
-                    if (response.ok) {
-                        return { success: true, status: response.status };
-                    } else {
-                        return { success: false, error: `HTTP ${response.status}` };
-                    }
-
-                } catch (error) {
-                    return { success: false, error: error.message };
-                }
-            }
-        }
-
+    <!-- Script principal -->
+    <script type="module">
+        import MTGArenaSnifferApp from './presentation/components/MTGArenaSnifferApp.js';
+        
         // Variables globales
-        let logger;
-        let scraper;
-
-        // Funciones de diagnóstico
-        async function runFullDiagnostic() {
-            updateStatus('🔧 Ejecutando diagnóstico completo...', 'warning');
-            
-            const results = [];
-
-            // Test 1: Navegador
-            logger.log('info', '🌐 Verificando capacidades del navegador...');
-            const browserTest = testBrowser();
-            results.push(browserTest);
-
-            // Test 2: Conectividad básica
-            logger.log('info', '🌍 Verificando conectividad básica...');
-            const connectivityTest = await testConnectivity();
-            results.push(connectivityTest);
-
-            // Test 3: Proxies CORS
-            logger.log('info', '🔗 Verificando proxies CORS...');
-            const proxyTest = await testAllProxies();
-            results.push(proxyTest);
-
-            // Test 4: MTGGoldfish
-            logger.log('info', '🐟 Verificando acceso a MTGGoldfish...');
-            const mtgTest = await testMTGGoldfishAccess();
-            results.push(mtgTest);
-
-            displayResults(results);
-            
-            const passedTests = results.filter(r => r.status === 'pass').length;
-            const totalTests = results.length;
-            
-            if (passedTests === totalTests) {
-                updateStatus(`✅ Diagnóstico completo: ${passedTests}/${totalTests} tests pasaron`, 'success');
-            } else {
-                updateStatus(`⚠️ Diagnóstico completo: ${passedTests}/${totalTests} tests pasaron`, 'warning');
+        window.mtgApp = null;
+        window.debugMode = true;
+        
+        // Función para actualizar pasos de carga
+        function updateLoadingStep(step) {
+            const stepsContainer = document.getElementById('loading-steps');
+            if (stepsContainer) {
+                stepsContainer.innerHTML = `<div class="step">${step}</div>`;
             }
         }
-
-        function testBrowser() {
-            const capabilities = {
-                fetch: typeof fetch !== 'undefined',
-                localStorage: typeof localStorage !== 'undefined',
-                modules: typeof Symbol !== 'undefined',
-                domParser: typeof DOMParser !== 'undefined',
-                promises: typeof Promise !== 'undefined'
-            };
-
-            const passed = Object.values(capabilities).every(Boolean);
-            
-            logger.log(passed ? 'success' : 'error', 
-                `Navegador: ${passed ? 'Compatible' : 'Incompatible'}`);
-
-            return {
-                name: 'Compatibilidad del Navegador',
-                status: passed ? 'pass' : 'fail',
-                details: Object.entries(capabilities)
-                    .map(([key, value]) => `${key}: ${value ? '✅' : '❌'}`)
-                    .join(', ')
-            };
-        }
-
-        async function testConnectivity() {
+        
+        // Función principal de inicialización
+        async function initializeApp() {
             try {
-                const response = await Promise.race([
-                    fetch('https://httpbin.org/json'),
-                    new Promise((_, reject) => 
-                        setTimeout(() => reject(new Error('Timeout después de 5 segundos')), 5000)
-                    )
-                ]);
+                console.log('🚀 Iniciando MTG Arena Sniffer con arquitectura completa...');
+                updateLoadingStep('🏗️ Inicializando arquitectura...');
                 
-                if (response.ok) {
-                    logger.log('success', '🌍 Conectividad básica: OK');
-                    return {
-                        name: 'Conectividad Básica',
-                        status: 'pass',
-                        details: `HTTP ${response.status} - Conexión exitosa`
-                    };
-                } else {
-                    throw new Error(`HTTP ${response.status}`);
+                // Crear instancia de la aplicación principal
+                window.mtgApp = new MTGArenaSnifferApp();
+                
+                updateLoadingStep('🗄️ Conectando con base de datos...');
+                
+                // Inicializar aplicación completa con toda la arquitectura
+                await window.mtgApp.initialize();
+                
+                updateLoadingStep('✅ Aplicación lista');
+                
+                console.log('✅ MTG Arena Sniffer inicializado correctamente');
+                console.log('📊 Estadísticas de la app:', window.mtgApp.getAppStats());
+                
+                // Ocultar loading inicial
+                const loadingOverlay = document.getElementById('initial-loading');
+                if (loadingOverlay) {
+                    setTimeout(() => {
+                        loadingOverlay.classList.remove('visible');
+                        loadingOverlay.classList.add('hidden');
+                    }, 1000);
                 }
-            } catch (error) {
-                logger.log('error', `🌍 Conectividad básica: FALLO - ${error.message}`);
-                return {
-                    name: 'Conectividad Básica',
-                    status: 'fail',
-                    details: error.message
-                };
-            }
-        }
-
-        async function testAllProxies() {
-            const proxies = scraper.corsProxies;
-            let workingProxies = 0;
-            
-            for (let i = 0; i < proxies.length; i++) {
-                const proxy = proxies[i];
-                const result = await scraper.testProxy(proxy);
                 
-                if (result.success) {
-                    workingProxies++;
-                    logger.log('success', `✅ Proxy ${i + 1}: OK`);
-                } else {
-                    logger.log('error', `❌ Proxy ${i + 1}: ${result.error}`);
-                }
-            }
-
-            const passed = workingProxies > 0;
-            
-            return {
-                name: 'Proxies CORS',
-                status: passed ? 'pass' : 'fail',
-                details: `${workingProxies}/${proxies.length} proxies funcionando`
-            };
-        }
-
-        async function testMTGGoldfishAccess() {
-            try {
-                const result = await scraper.testMTGGoldfish();
+                // Mostrar notificación de bienvenida
+                setTimeout(() => {
+                    if (window.mtgApp.uiService) {
+                        window.mtgApp.uiService.showNotification({
+                            type: 'success',
+                            title: '🎉 MTG Arena Sniffer',
+                            message: 'Sistema listo para predecir mazos del oponente',
+                            duration: 5000
+                        });
+                    }
+                }, 1500);
                 
-                return {
-                    name: 'Acceso a MTGGoldfish',
-                    status: result.success ? 'pass' : 'fail',
-                    details: result.success ? 
-                        `${result.decks?.length || 0} mazos encontrados` : 
-                        result.error
-                };
+                // Mostrar información inicial en consola
+                setTimeout(() => {
+                    console.log(`
+🎮 MTG Arena Sniffer - Sistema Inicializado
+
+📊 Estado del Sistema:
+   • Base de datos: ${window.mtgApp.databaseManager?.getStats().deckCount || 0} mazos cargados
+   • Motor de predicción: Activo
+   • Componentes UI: ${Object.keys(window.mtgApp.components).length} cargados
+
+🎯 Cómo usar:
+   1. Añade cartas del oponente usando el panel izquierdo
+   2. Observa las predicciones en tiempo real
+   3. El sistema auto-confirmará mazos al 95% de certeza
+
+🔧 Funciones de debug disponibles:
+   • debugApp() - Información del sistema
+   • resetGame() - Reiniciar partida
+   • testSequence() - Secuencia de prueba
+   • forceUpdate() - Actualizar base de datos
+
+💡 Los datos vienen directamente de MTGGoldfish (scraped)
+                    `);
+                }, 2000);
+                
             } catch (error) {
-                return {
-                    name: 'Acceso a MTGGoldfish',
-                    status: 'fail',
-                    details: error.message
-                };
+                console.error('❌ Error inicializando aplicación:', error);
+                showInitializationError(error);
             }
         }
-
-        function displayResults(results) {
-            const container = document.getElementById('test-results');
-            container.innerHTML = results.map(result => `
-                <div class="test-card">
-                    <h3>${result.name}</h3>
-                    <div class="test-status ${result.status}">${result.status.toUpperCase()}</div>
-                    <p>${result.details}</p>
+        
+        // Función para mostrar errores de inicialización
+        function showInitializationError(error) {
+            const appContainer = document.getElementById('app');
+            
+            appContainer.innerHTML = `
+                <div class="mtg-sniffer-app theme-dark">
+                    <div class="error-container">
+                        <div class="error-content">
+                            <div class="error-header">
+                                <div class="error-icon">❌</div>
+                                <h2>Error de Inicialización</h2>
+                            </div>
+                            
+                            <div class="error-details">
+                                <div class="error-message">
+                                    <strong>Error:</strong> ${error.message}
+                                </div>
+                                
+                                <div class="error-suggestions">
+                                    <h4>💡 Posibles soluciones:</h4>
+                                    <ul>
+                                        <li><strong>Conexión:</strong> Verifica tu conexión a internet</li>
+                                        <li><strong>CORS:</strong> Desactiva temporalmente extensiones/AdBlock</li>
+                                        <li><strong>Cache:</strong> Recarga con Ctrl+F5</li>
+                                        <li><strong>Navegador:</strong> Prueba en modo incógnito</li>
+                                    </ul>
+                                </div>
+                                
+                                <div class="error-actions">
+                                    <button class="btn btn-primary" onclick="location.reload()">
+                                        🔄 Reintentar
+                                    </button>
+                                    <button class="btn btn-secondary" onclick="console.error('${error.stack}')">
+                                        🔧 Ver en Consola
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-            `).join('');
+            `;
         }
-
-        function updateStatus(message, type = 'info') {
-            const statusElement = document.getElementById('main-status');
-            const textElement = document.getElementById('status-text');
+        
+        // Funciones globales para debugging y control
+        window.debugApp = function() {
+            console.group('🔧 MTG Arena Sniffer - Debug Info');
             
-            statusElement.className = `status ${type}`;
-            textElement.textContent = message;
-        }
-
-        // Funciones de control
-        async function testScraper() {
-            updateStatus('🐟 Probando scraper...', 'warning');
-            await scraper.testMTGGoldfish();
-        }
-
-        async function testProxies() {
-            updateStatus('🔗 Probando proxies...', 'warning');
-            await testAllProxies();
-        }
-
-        function clearLogs() {
-            logger.clear();
-        }
-
-        // Inicialización
-        document.addEventListener('DOMContentLoaded', () => {
-            logger = new DiagnosticLogger();
-            scraper = new TestScraper(logger);
+            if (window.mtgApp) {
+                console.log('📊 App Stats:', window.mtgApp.getAppStats());
+                console.log('🎮 Game Service:', window.mtgApp.gameService?.getStats());
+                console.log('🗄️ Database:', window.mtgApp.databaseManager?.getStats());
+                console.log('🎯 Prediction Engine:', window.mtgApp.predictionEngine?.getStats());
+                console.log('📡 Event Bus:', window.EventBus?.getStats());
+                console.log('🎨 UI Service:', window.mtgApp.uiService?.getUIState());
+            } else {
+                console.log('❌ Aplicación no inicializada');
+            }
             
-            logger.log('success', '✅ Sistema de diagnóstico listo');
-            logger.log('info', '💡 Haz clic en "Diagnóstico Completo" para comenzar');
+            console.groupEnd();
+        };
+        
+        window.resetGame = async function() {
+            if (window.mtgApp) {
+                console.log('↻ Reiniciando juego...');
+                await window.mtgApp.resetGame();
+                console.log('✅ Juego reiniciado');
+            } else {
+                console.log('❌ App no disponible');
+            }
+        };
+        
+        window.forceUpdate = async function() {
+            if (window.mtgApp) {
+                console.log('🔄 Forzando actualización de base de datos...');
+                try {
+                    await window.mtgApp.forceUpdate();
+                    console.log('✅ Base de datos actualizada');
+                } catch (error) {
+                    console.error('❌ Error en actualización:', error);
+                }
+            } else {
+                console.log('❌ App no disponible');
+            }
+        };
+        
+        window.testSequence = async function() {
+            if (!window.mtgApp?.gameService) {
+                console.log('❌ GameService no disponible');
+                return;
+            }
             
-            updateStatus('Sistema listo - Haz clic en Diagnóstico Completo', 'success');
+            console.log('🧪 Iniciando secuencia de test con cartas reales...');
+            
+            // Secuencia basada en un mazo típico de Mono Red Aggro
+            const testCards = [
+                { name: 'Mountain', turn: 1 },
+                { name: 'Monastery Swiftspear', turn: 1 },
+                { name: 'Mountain', turn: 2 },
+                { name: 'Lightning Bolt', turn: 2 },
+                { name: 'Mountain', turn: 3 },
+                { name: 'Goblin Guide', turn: 3 },
+                { name: 'Lightning Strike', turn: 4 }
+            ];
+
+            for (let i = 0; i < testCards.length; i++) {
+                const card = testCards[i];
+                
+                console.log(`🧪 [${i + 1}/${testCards.length}] Añadiendo: ${card.name} (Turno ${card.turn})`);
+                
+                try {
+                    // Actualizar turno
+                    window.mtgApp.gameService.setTurn(card.turn);
+                    
+                    // Añadir carta
+                    await window.mtgApp.gameService.addOpponentCard({
+                        name: card.name,
+                        turn: card.turn,
+                        timestamp: Date.now()
+                    });
+                    
+                    // Pausa entre cartas
+                    if (i < testCards.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, 1500));
+                    }
+                    
+                } catch (error) {
+                    console.error(`❌ Error añadiendo ${card.name}:`, error);
+                }
+            }
+            
+            console.log('✅ Secuencia de test completada');
+            console.log('📊 Estado final:', window.mtgApp.gameService.getStats());
+        };
+        
+        // Función para añadir carta manualmente
+        window.addCard = async function(cardName, turn = null) {
+            if (!window.mtgApp?.gameService) {
+                console.log('❌ GameService no disponible');
+                return;
+            }
+            
+            const currentTurn = turn || window.mtgApp.gameService.gameState.currentTurn || 1;
+            
+            try {
+                await window.mtgApp.gameService.addOpponentCard({
+                    name: cardName,
+                    turn: currentTurn,
+                    timestamp: Date.now()
+                });
+                
+                console.log(`✅ Carta añadida: ${cardName} (Turno ${currentTurn})`);
+            } catch (error) {
+                console.error(`❌ Error añadiendo carta: ${error.message}`);
+            }
+        };
+        
+        // Manejo de errores globales
+        window.addEventListener('error', (event) => {
+            console.error('❌ Error no capturado:', event.error);
+            
+            if (window.mtgApp?.uiService) {
+                window.mtgApp.uiService.showNotification({
+                    type: 'error',
+                    title: 'Error Inesperado',
+                    message: 'Se ha producido un error. Revisa la consola para más detalles.',
+                    duration: 5000
+                });
+            }
         });
-
-        // Hacer funciones disponibles globalmente
-        window.runFullDiagnostic = runFullDiagnostic;
-        window.testScraper = testScraper;
-        window.testProxies = testProxies;
-        window.clearLogs = clearLogs;
+        
+        window.addEventListener('unhandledrejection', (event) => {
+            console.error('❌ Promesa rechazada:', event.reason);
+            event.preventDefault();
+        });
+        
+        // Inicializar cuando el DOM esté listo
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeApp);
+        } else {
+            initializeApp();
+        }
+        
     </script>
+
+    <!-- Estilos adicionales -->
+    <style>
+        /* Loading Steps */
+        .loading-steps {
+            margin-top: 1rem;
+            opacity: 0.8;
+        }
+        
+        .loading-steps .step {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+        }
+        
+        /* Error Container */
+        .error-container {
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        
+        .error-content {
+            max-width: 600px;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+        }
+        
+        .error-header {
+            background: var(--error-color);
+            color: white;
+            padding: 2rem;
+            text-align: center;
+        }
+        
+        .error-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+        }
+        
+        .error-header h2 {
+            margin: 0;
+            font-size: 1.5rem;
+        }
+        
+        .error-details {
+            padding: 2rem;
+        }
+        
+        .error-message {
+            background: rgba(255, 59, 48, 0.1);
+            border: 1px solid var(--error-color);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1.5rem;
+            font-family: monospace;
+            font-size: 0.875rem;
+        }
+        
+        .error-suggestions {
+            margin-bottom: 2rem;
+        }
+        
+        .error-suggestions h4 {
+            color: var(--warning-color);
+            margin-bottom: 1rem;
+        }
+        
+        .error-suggestions ul {
+            list-style: none;
+            padding: 0;
+        }
+        
+        .error-suggestions li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .error-suggestions li:last-child {
+            border-bottom: none;
+        }
+        
+        .error-actions {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+        }
+        
+        /* Responsive */
+        @media (max-width: 768px) {
+            .error-container {
+                padding: 1rem;
+            }
+            
+            .error-header,
+            .error-details {
+                padding: 1.5rem;
+            }
+            
+            .error-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
 </body>
 </html>
