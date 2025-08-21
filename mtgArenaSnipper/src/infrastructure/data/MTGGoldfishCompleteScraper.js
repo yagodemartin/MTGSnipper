@@ -28,26 +28,31 @@ class MTGGoldfishCompleteScraper {
 
 async scrapeCompleteMetaData() {
     try {
-        this.log('🐟 Scraping BÁSICO de MTGGoldfish...');
+        this.log('🐟 Scraping COMPLETO con cartas...');
         
+        // 1. Obtener arquetipos del meta
         const metaDecks = await this.scrapeMetaOverview();
         
         if (!metaDecks || metaDecks.length === 0) {
             throw new Error('No se pudieron obtener arquetipos');
         }
-        
-        this.log(`📋 Encontrados ${metaDecks.length} arquetipos`);
-        
+
+        this.log(`📋 Encontrados ${metaDecks.length} arquetipos, scrapeando cartas...`);
+
+        // 2. CAMBIAR ESTA LÍNEA - Scrapear cartas de cada mazo:
+        const completeDecks = await this.scrapeAllDeckListsWithImages(metaDecks);
+
         const finalData = {
             lastUpdated: new Date().toISOString(),
             format: 'standard',
-            source: 'MTGGoldfish-Basic',
-            deckCount: metaDecks.length,
-            decks: metaDecks
+            source: 'MTGGoldfish-Complete',
+            deckCount: completeDecks.length,
+            decks: completeDecks // <- Mazos CON cartas
         };
-        
-        this.log(`✅ Scraping básico exitoso: ${metaDecks.length} mazos`);
+
+        this.log(`✅ Scraping completo: ${completeDecks.length} mazos con cartas`);
         return finalData;
+
     } catch (error) {
         this.logError('❌ Error en scraping:', error);
         throw error;
@@ -137,95 +142,119 @@ async scrapeCompleteMetaData() {
         return completeDecks;
     }
 
-    /**
-     * 📋 Scrapear un mazo individual con todas sus cartas e imágenes
-     */
-    async scrapeSingleDeckWithImages(deck) {
-        try {
-            const deckUrl = this.baseUrl + deck.url;
-            this.log(`🔗 Scrapeando: ${deckUrl}`);
-            
-            // 1. Obtener HTML de la página del mazo
-            const html = await this.fetchWithProxy(deckUrl);
-            
-            // 2. Parsear cartas del mazo
-            const deckList = this.parseArchetypePage(html);
-            
-            // 3. Obtener imagen del mazo desde MTGGoldfish
-            const deckImage = this.extractDeckImage(html, deckUrl);
-            
-            // 4. Obtener imágenes de las cartas principales
-            const enrichedMainboard = await this.enrichCardsWithImages(deckList.mainboard || []);
-            const enrichedSideboard = await this.enrichCardsWithImages(deckList.sideboard || []);
-            
-            // 5. Combinar todo
-            const completeDeck = {
-                ...deck,
-                mainboard: enrichedMainboard,
-                sideboard: enrichedSideboard,
-                keyCards: this.identifyKeyCards(enrichedMainboard),
-                totalCards: enrichedMainboard.length + enrichedSideboard.length,
-                deckImage: deckImage,
-                colors: this.inferColorsFromCards(enrichedMainboard),
-                archetype: this.inferArchetypeFromCards(enrichedMainboard),
-                strategy: this.inferStrategy(deck.name),
-                weakness: this.inferWeakness(deck.name),
-                listScrapedAt: new Date().toISOString()
-            };
-            
-            return completeDeck;
+  async scrapeSingleDeckWithImages(deck) {
+    try {
+        // IR DIRECTO al arquetipo, NO buscar deck específico
+        const deckUrl = this.baseUrl + deck.url;
+        this.log(`🔗 Scrapeando DIRECTO: ${deckUrl}`);
+        
+        const html = await this.fetchWithProxy(deckUrl);
+        const deckList = this.parseArchetypePage(html);
+        
+        return {
+            ...deck,
+            mainboard: deckList.mainboard || [],
+            sideboard: deckList.sideboard || [],
+            totalCards: (deckList.mainboard?.length || 0) + (deckList.sideboard?.length || 0)
+        };
 
-        } catch (error) {
-            this.logError(`Error scrapeando ${deck.name}:`, error);
-            throw error;
-        }
+    } catch (error) {
+        this.logError(`Error scrapeando ${deck.name}:`, error);
+        return { ...deck, mainboard: [], sideboard: [] };
     }
+}
 
-    /**
-     * 📄 Parsear página de arquetipo para extraer listas de cartas
-     */
-    parseArchetypePage(html) {
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
+parseArchetypePage(html) {
+    console.log('🔍 DEBUG: Parseando página de mazo...');
+    
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        const deckList = {
+            mainboard: [],
+            sideboard: []
+        };
+        
+    // POR:
+const cardRows = doc.querySelectorAll('tr');
+console.log('🔍 DEBUG: Buscando con selector simple, encontradas:', cardRows.length, 'filas');
+        let currentSection = 'mainboard';
+        
+        cardRows.forEach((row, index) => {
+            const text = row.textContent.trim();
+
+             // ← AÑADIR ESTAS LÍNEAS DE DEBUG:
+    if (index < 10) { // Solo primeras 10 filas para no saturar
+        console.log(`🔍 DEBUG: Fila ${index}:`, text.substring(0, 100));
+        
+        const quantity = this.extractQuantity(row);
+        const cardName = this.extractCardName(row);
+        console.log(`🔍 DEBUG: Fila ${index} -> Cantidad: ${quantity}, Carta: "${cardName}"`);
+    }
             
-            const deckList = {
-                mainboard: [],
-                sideboard: []
-            };
+            // Detectar sección Sideboard
+            if (text.toLowerCase().includes('sideboard')) {
+                currentSection = 'sideboard';
+                console.log('🔍 DEBUG: Cambiando a sideboard en fila', index);
+                return;
+            }
             
-            // Buscar tablas de cartas
-            const cardTables = doc.querySelectorAll('table.deck-view-deck-table, table');
+            // Buscar celdas de cantidad y nombre
+            const cells = row.querySelectorAll('td, th');
+            if (cells.length < 2) return;
             
-            for (const table of cardTables) {
-                const tableContext = this.getTableContext(table);
-                const cards = this.parseCardTable(table);
+            // Intentar extraer cantidad y nombre de diferentes formas
+            const quantity = this.extractQuantity(row);
+            const cardName = this.extractCardName(row);
+            
+            if (quantity > 0 && cardName) {
+                const card = {
+                    quantity: quantity,
+                    name: cardName,
+                    section: currentSection
+                };
                 
-                if (cards.length > 0) {
-                    if (tableContext.includes('sideboard') || tableContext.includes('side')) {
-                        deckList.sideboard.push(...cards);
-                        this.log(`  📦 Sideboard: ${cards.length} cartas`);
-                    } else {
-                        deckList.mainboard.push(...cards);
-                        this.log(`  🃏 Mainboard: ${cards.length} cartas`);
-                    }
-                }
+                deckList[currentSection].push(card);
+                console.log(`🔍 DEBUG: [${currentSection}] ${quantity}x ${cardName}`);
             }
-            
-            // Si no encontramos en tablas, buscar en otros elementos
-            if (deckList.mainboard.length === 0) {
-                this.log('  🔍 Buscando cartas en formato alternativo...');
-                const alternativeCards = this.parseAlternativeCardFormat(doc);
-                deckList.mainboard.push(...alternativeCards);
-            }
-            
-            return deckList;
-
-        } catch (error) {
-            this.logError('Error parseando página de arquetipo:', error);
-            return { mainboard: [], sideboard: [] };
-        }
+        });
+        
+        console.log('🔍 DEBUG: Resultado final - Mainboard:', deckList.mainboard.length, 'Sideboard:', deckList.sideboard.length);
+        return deckList;
+        
+    } catch (error) {
+        console.error('❌ Error parseando página:', error);
+        return { mainboard: [], sideboard: [] };
     }
+}
+
+// Métodos auxiliares
+extractQuantity(row) {
+    const text = row.textContent;
+    // Buscar números al inicio: "4x", "2", etc.
+    const quantityMatch = text.match(/^\s*(\d+)[\sx]*/);
+    return quantityMatch ? parseInt(quantityMatch[1]) : 0;
+}
+
+extractCardName(row) {
+    // Buscar enlaces de cartas con diferentes patrones
+    let cardLink = row.querySelector('a[href*="/price/"]');
+    if (!cardLink) cardLink = row.querySelector('a[href*="/cards/"]');
+    if (!cardLink) cardLink = row.querySelector('a.card-link');
+    
+    if (cardLink) {
+        console.log('🔍 DEBUG: Link encontrado:', cardLink.textContent.trim());
+        return cardLink.textContent.trim();
+    }
+    
+    // Fallback: buscar texto después del número
+    const text = row.textContent.trim();
+    console.log('🔍 DEBUG: Texto completo fila:', text);
+    
+    const nameMatch = text.match(/^\s*\d+[\sx]*(.+?)(?:\s+\$|\s*$)/);
+    return nameMatch ? nameMatch[1].trim() : null;
+}
 
     /**
      * 📋 Parsear tabla de cartas
@@ -456,6 +485,11 @@ async scrapeCompleteMetaData() {
      * 🔗 Extraer URLs de arquetipos
      */
     extractArchetypeUrls(html) {
+
+         console.log('🔍 DEBUG: Parseando HTML de', html.length, 'caracteres');
+    console.log('🔍 DEBUG: Buscando links...', html.includes('<a') ? 'SÍ' : 'NO');
+  
+    
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
@@ -501,51 +535,54 @@ async scrapeCompleteMetaData() {
         }
     }
 
-    /**
-     * 🌐 Fetch con proxy
-     */
-    async fetchWithProxy(url) {
-        for (const proxy of this.workingProxies) {
-            try {
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-                
-                const proxyUrl = proxy.url + encodeURIComponent(url);
-                
-                const response = await fetch(proxyUrl, {
-                    method: proxy.method,
-                    headers: this.getOptimalHeaders(),
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeoutId);
-
-                if (!response.ok) {
-                    throw new Error(`HTTP ${response.status}`);
-                }
-
-                let html;
-                if (proxy.parseJSON) {
-                    const json = await response.json();
-                    html = json.contents || json.data || json.body || '';
-                } else {
-                    html = await response.text();
-                }
-
-                if (html && html.length > 500) {
-                    return html;
-                }
-                
-                throw new Error('Respuesta muy corta');
-
-            } catch (error) {
-                this.log(`⚠️ ${proxy.name} falló: ${error.message}`);
-                continue;
-            }
-        }
+/**
+ * 🌐 Fetch directo (extensión CORS activada)
+ */
+async fetchWithProxy(url) {
+    this.log(`🔗 Fetch directo a: ${url}`);
+    
+    try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
         
-        throw new Error('Todos los proxies fallaron');
+
+        
+        const response = await fetch(url, {
+            method: 'GET',
+            headers: this.getOptimalHeaders(),
+            signal: controller.signal,
+            mode: 'cors'
+        });
+
+        clearTimeout(timeoutId);
+
+        
+
+        if (!response.ok) {
+            throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+        }
+
+        const html = await response.text();
+
+
+// ← AÑADIR ESTAS LÍNEAS DE DEBUG:
+console.log('🔍 DEBUG: Primeros 500 chars del HTML:', html.substring(0, 500));
+console.log('🔍 DEBUG: Buscar "Deck" en HTML:', html.includes('Deck') ? 'SÍ' : 'NO');
+console.log('🔍 DEBUG: Buscar "metagame" en HTML:', html.includes('metagame') ? 'SÍ' : 'NO');
+
+        
+        if (!html || html.length < 500) {
+            throw new Error('Respuesta muy corta o vacía');
+        }
+
+        this.log(`✅ Fetch exitoso: ${html.length} caracteres`);
+        return html;
+
+    } catch (error) {
+        this.logError(`❌ Error en fetch directo:`, error);
+        throw error;
     }
+}
 
     // Cache de imágenes
     loadImageCache() {
@@ -736,6 +773,33 @@ async scrapeCompleteMetaData() {
     logError(message, error = null) {
         console.error(`❌ [CompleteScraper] ${message}`, error || '');
     }
+
+    /**
+ * 🔍 Buscar URL de deck específico dentro del arquetipo
+ */
+findSpecificDeckUrl(html) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Buscar primer enlace a deck específico
+    const deckLink = doc.querySelector('a[href*="/deck/"]');
+    if (deckLink) {
+        const href = deckLink.getAttribute('href');
+        this.log(`🔍 DEBUG: Encontrado deck específico: ${href}`);
+        return this.baseUrl + href;
+    }
+    
+    // Fallback: buscar otros patrones
+    const tournamentLink = doc.querySelector('a[href*="/tournament/"]');
+    if (tournamentLink) {
+        const href = tournamentLink.getAttribute('href');
+        this.log(`🔍 DEBUG: Encontrado torneo: ${href}`);
+        return this.baseUrl + href;
+    }
+    
+    this.log(`🔍 DEBUG: No se encontró deck específico`);
+    return null;
+}
 }
 
 export default MTGGoldfishCompleteScraper;
