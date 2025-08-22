@@ -1,5 +1,5 @@
-// src/presentation/components/ui/HeaderComponent.js
-// 📋 Componente de header con navegación
+// src/presentation/components/HeaderComponent.js
+// 📋 Header con branding mágico personalizado
 
 import BaseComponent from './BaseComponent.js';
 
@@ -12,17 +12,21 @@ class HeaderComponent extends BaseComponent {
             isConnected: false,
             gameDetected: false,
             formatDetected: 'standard',
-            lastUpdate: null
+            lastUpdate: null,
+            dbStats: {
+                deckCount: 0,
+                isUpdating: false
+            }
         };
     }
 
     async onInitialize() {
         // Escuchar cambios de vista
-        this.eventBus.on('ui:view:changed', (data) => {
+        this.eventBus.on('ui:view-changed', (data) => {
             this.setState({ currentView: data.to });
         });
 
-        // Escuchar estado de conexión
+        // Escuchar estado de conexión MTG Arena
         this.eventBus.on('mtg:arena:detected', (data) => {
             this.setState({ 
                 gameDetected: true,
@@ -39,17 +43,65 @@ class HeaderComponent extends BaseComponent {
 
         // Escuchar actualizaciones de base de datos
         this.eventBus.on('database:updated', (data) => {
-            this.setState({ lastUpdate: Date.now() });
+            this.setState({ 
+                lastUpdate: Date.now(),
+                dbStats: {
+                    deckCount: data.deckCount || 0,
+                    isUpdating: false
+                }
+            });
         });
+
+        this.eventBus.on('database:update:started', () => {
+            this.setState({ 
+                dbStats: { ...this.state.dbStats, isUpdating: true }
+            });
+        });
+
+        this.eventBus.on('database:update:completed', (data) => {
+            this.setState({ 
+                dbStats: {
+                    deckCount: data.deckCount || 0,
+                    isUpdating: false
+                },
+                lastUpdate: Date.now()
+            });
+        });
+
+        // Cargar stats iniciales
+        await this.loadInitialStats();
+    }
+
+    async loadInitialStats() {
+        try {
+            if (this.dependencies.uiService?.gameService?.databaseManager) {
+                const metaData = await this.dependencies.uiService.gameService.databaseManager.getMetaData();
+                if (metaData) {
+                    this.setState({
+                        dbStats: {
+                            deckCount: metaData.deckCount || metaData.decks?.length || 0,
+                            isUpdating: false
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            this.log('⚠️ Error cargando stats iniciales:', error);
+        }
     }
 
     getTemplate() {
         return `
             <div class="header-component">
+                <!-- Partículas mágicas de fondo -->
+                <div class="magic-particles"></div>
+                
                 <div class="header-brand">
-                    <div class="brand-icon">🔍</div>
-                    <h1 class="brand-title">mtgArenaSniffer</h1>
-                    <div class="brand-tagline">Deck Detection Tool</div>
+                    <div class="brand-icon">🔮</div>
+                    <div class="brand-text">
+                        <h1 class="brand-title">MTG Arena Sniffer</h1>
+                        <div class="brand-tagline">Deck Detection • Meta Analysis</div>
+                    </div>
                 </div>
 
                 <div class="header-navigation">
@@ -60,7 +112,11 @@ class HeaderComponent extends BaseComponent {
                         </button>
                         <button class="nav-tab ${this.state.currentView === 'confirmed' ? 'active' : ''}" 
                                 data-view="confirmed">
-                            📋 Mazo confirmado
+                            📋 Confirmado
+                        </button>
+                        <button class="nav-tab ${this.state.currentView === 'meta-browser' ? 'active' : ''}" 
+                                data-view="meta-browser">
+                            🗂️ Meta Browser
                         </button>
                         <button class="nav-tab ${this.state.currentView === 'debug' ? 'active' : ''}" 
                                 data-view="debug">
@@ -74,7 +130,7 @@ class HeaderComponent extends BaseComponent {
                         <div class="status-item ${this.state.gameDetected ? 'connected' : 'disconnected'}">
                             <div class="status-dot"></div>
                             <span class="status-text">
-                                ${this.state.gameDetected ? 'MTG Arena detectado' : 'Esperando MTG Arena'}
+                                ${this.state.gameDetected ? 'Arena Conectado' : 'Esperando Arena'}
                             </span>
                         </div>
                         
@@ -82,23 +138,39 @@ class HeaderComponent extends BaseComponent {
                             <span class="format-badge">${this.state.formatDetected.toUpperCase()}</span>
                         </div>
 
+                        <div class="status-item database">
+                            <span class="db-status">
+                                ${this.state.dbStats.isUpdating ? 
+                                    '🔄 Actualizando...' : 
+                                    `📊 ${this.state.dbStats.deckCount} mazos`
+                                }
+                            </span>
+                        </div>
+
                         ${this.state.lastUpdate ? `
                             <div class="status-item update">
                                 <span class="update-time">
-                                    📊 ${this.formatLastUpdate()}
+                                    🕒 ${this.formatLastUpdate()}
                                 </span>
                             </div>
                         ` : ''}
                     </div>
 
                     <div class="header-actions">
-                        <button class="btn btn-sm btn-secondary" id="force-update-btn" title="Forzar actualización">
-                            🔄
+                        <button class="btn btn-sm action-btn" 
+                                id="force-update-btn" 
+                                title="Actualizar base de datos"
+                                ${this.state.dbStats.isUpdating ? 'disabled' : ''}>
+                            ${this.state.dbStats.isUpdating ? '⏳' : '🔄'}
                         </button>
-                        <button class="btn btn-sm btn-secondary" id="reset-game-btn" title="Reiniciar juego">
+                        <button class="btn btn-sm action-btn" 
+                                id="reset-game-btn" 
+                                title="Reiniciar juego actual">
                             ↻
                         </button>
-                        <button class="btn btn-sm btn-secondary" id="settings-btn" title="Configuración">
+                        <button class="btn btn-sm action-btn" 
+                                id="settings-btn" 
+                                title="Configuración">
                             ⚙️
                         </button>
                     </div>
@@ -112,7 +184,9 @@ class HeaderComponent extends BaseComponent {
         this.$$('.nav-tab').forEach(tab => {
             this.addEventListener(tab, 'click', (e) => {
                 const view = e.target.getAttribute('data-view');
-                this.changeView(view);
+                if (view !== this.state.currentView) {
+                    this.changeView(view);
+                }
             });
         });
 
@@ -144,108 +218,87 @@ class HeaderComponent extends BaseComponent {
     changeView(view) {
         if (this.state.currentView === view) return;
 
-        this.log(`📍 Cambiando vista a: ${view}`);
+        this.log(`📍 Cambiando vista: ${this.state.currentView} → ${view}`);
+        
+        // Añadir efecto visual al botón
+        const activeTab = this.$(`.nav-tab[data-view="${view}"]`);
+        if (activeTab) {
+            activeTab.classList.add('magic-shimmer');
+            setTimeout(() => {
+                activeTab.classList.remove('magic-shimmer');
+            }, 600);
+        }
+        
         this.eventBus.emit('ui:view-change-requested', { view });
     }
 
-    forceUpdate() {
-        this.log('🔄 Forzando actualización de base de datos...');
+    async forceUpdate() {
+        this.log('🔄 Iniciando actualización forzada...');
+        
+        // Feedback visual
+        const updateBtn = this.$('#force-update-btn');
+        if (updateBtn) {
+            updateBtn.classList.add('magic-shimmer');
+            updateBtn.disabled = true;
+        }
+        
+        // Emitir evento
         this.eventBus.emit('database:force-update');
         
-        this.dependencies.uiService.showNotification({
-            type: 'info',
-            title: 'Actualización iniciada',
-            message: 'Actualizando base de datos del meta...',
-            duration: 3000
-        });
+        // Mostrar notificación si el servicio está disponible
+        if (this.dependencies.uiService && this.dependencies.uiService.showNotification) {
+            this.dependencies.uiService.showNotification({
+                type: 'info',
+                title: '🔄 Actualización iniciada',
+                message: 'Descargando mazos meta actualizados...',
+                duration: 3000
+            });
+        }
+
+        // Remover efecto después de 3 segundos
+        setTimeout(() => {
+            if (updateBtn) {
+                updateBtn.classList.remove('magic-shimmer');
+            }
+        }, 3000);
     }
 
     resetGame() {
         this.log('↻ Reiniciando juego...');
+        
+        // Feedback visual
+        const resetBtn = this.$('#reset-game-btn');
+        if (resetBtn) {
+            resetBtn.classList.add('magic-shimmer');
+            setTimeout(() => {
+                resetBtn.classList.remove('magic-shimmer');
+            }, 1000);
+        }
+        
         this.eventBus.emit('game:reset');
         
-        this.dependencies.uiService.showNotification({
-            type: 'info',
-            title: 'Juego reiniciado',
-            message: 'Listo para nueva partida',
-            duration: 2000
-        });
+        if (this.dependencies.uiService && this.dependencies.uiService.showNotification) {
+            this.dependencies.uiService.showNotification({
+                type: 'success',
+                title: '↻ Juego reiniciado',
+                message: 'Listo para nueva partida',
+                duration: 2000
+            });
+        }
     }
 
     showSettings() {
-        this.dependencies.uiService.showModal({
-            title: '⚙️ Configuración',
-            content: this.getSettingsModalContent(),
-            size: 'medium',
-            buttons: [
-                { text: 'Cerrar', action: 'close' },
-                { text: 'Guardar', action: 'save', type: 'primary' }
-            ]
-        });
-    }
-
-    getSettingsModalContent() {
-        return `
-            <div class="settings-content">
-                <div class="setting-group">
-                    <h4>🎯 Predicciones</h4>
-                    <label>
-                        <input type="checkbox" id="auto-confirm" checked>
-                        Auto-confirmar mazos al 95% de certeza
-                    </label>
-                    <label>
-                        <input type="number" id="min-cards" value="2" min="1" max="5">
-                        Mínimo de cartas para predicción
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <h4>🔄 Actualización</h4>
-                    <label>
-                        <input type="checkbox" id="auto-update" checked>
-                        Actualizar automáticamente al iniciar
-                    </label>
-                    <label>
-                        <select id="update-frequency">
-                            <option value="24">Cada 24 horas</option>
-                            <option value="12">Cada 12 horas</option>
-                            <option value="6">Cada 6 horas</option>
-                        </select>
-                        Frecuencia de actualización
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <h4>🎨 Interfaz</h4>
-                    <label>
-                        <select id="theme">
-                            <option value="dark">Oscuro</option>
-                            <option value="light">Claro</option>
-                            <option value="auto">Automático</option>
-                        </select>
-                        Tema visual
-                    </label>
-                    <label>
-                        <input type="checkbox" id="debug-mode">
-                        Mostrar información de debug
-                    </label>
-                </div>
-
-                <div class="setting-group">
-                    <h4>⌨️ Atajos</h4>
-                    <div class="hotkey-list">
-                        <div class="hotkey-item">
-                            <span>Mostrar/Ocultar app:</span>
-                            <kbd>Ctrl + Alt + M</kbd>
-                        </div>
-                        <div class="hotkey-item">
-                            <span>Reiniciar juego:</span>
-                            <kbd>Ctrl + Alt + R</kbd>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
+        this.log('⚙️ Abriendo configuración...');
+        
+        // Por ahora mostrar modal simple
+        if (this.dependencies.uiService && this.dependencies.uiService.showNotification) {
+            this.dependencies.uiService.showNotification({
+                type: 'info',
+                title: '⚙️ Configuración',
+                message: 'Panel de configuración próximamente disponible',
+                duration: 3000
+            });
+        }
     }
 
     formatLastUpdate() {
@@ -253,18 +306,34 @@ class HeaderComponent extends BaseComponent {
         
         const minutes = Math.floor((Date.now() - this.state.lastUpdate) / 60000);
         
-        if (minutes < 1) return 'Actualizado ahora';
-        if (minutes < 60) return `Actualizado hace ${minutes}m`;
+        if (minutes < 1) return 'ahora';
+        if (minutes < 60) return `${minutes}m`;
         
         const hours = Math.floor(minutes / 60);
-        return `Actualizado hace ${hours}h`;
+        if (hours < 24) return `${hours}h`;
+        
+        const days = Math.floor(hours / 24);
+        return `${days}d`;
+    }
+
+    // Método para actualizar stats externamente
+    updateDatabaseStats(stats) {
+        this.setState({
+            dbStats: {
+                deckCount: stats.deckCount || 0,
+                isUpdating: stats.isUpdating || false
+            }
+        });
     }
 
     shouldRerender(prevState, newState) {
         return prevState.currentView !== newState.currentView ||
                prevState.gameDetected !== newState.gameDetected ||
                prevState.isConnected !== newState.isConnected ||
-               prevState.formatDetected !== newState.formatDetected;
+               prevState.formatDetected !== newState.formatDetected ||
+               prevState.dbStats.deckCount !== newState.dbStats.deckCount ||
+               prevState.dbStats.isUpdating !== newState.dbStats.isUpdating ||
+               (Math.abs((prevState.lastUpdate || 0) - (newState.lastUpdate || 0)) > 60000); // Solo re-render si cambió hace más de 1 minuto
     }
 }
 

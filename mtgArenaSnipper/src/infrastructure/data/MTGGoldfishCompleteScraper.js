@@ -14,7 +14,7 @@ class MTGGoldfishCompleteScraper {
         
         this.rateLimitDelay = 3000;
         this.timeout = 15000;
-        this.maxDecks = 8;
+        this.maxDecks = 20;
         this.debugMode = true;
         
         // Cache de imágenes

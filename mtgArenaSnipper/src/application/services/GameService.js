@@ -42,45 +42,66 @@ class GameService {
         });
     }
 
-    /**
-     * 🃏 Añadir carta del oponente
-     */
-    async addOpponentCard(cardData) {
-        try {
-            this.log(`🃏 Procesando carta: ${cardData.name}`);
-            
-            // Validar datos de entrada
-            if (!this.validateCardData(cardData)) {
-                throw new Error('Datos de carta inválidos');
-            }
-            
-            // Enriquecer carta con contexto del juego
-            const enrichedCard = this.enrichCard(cardData);
-            
-            // Añadir al historial
-            this.gameState.cardsPlayed.push(enrichedCard);
-            
-            // Procesar con prediction engine
-            const result = await this.predictionEngine.addOpponentCard(enrichedCard);
-            
-           // AÑADIR:
-            if (!result) {
-    this.log('⚠️ No se pudo procesar la carta (sin datos del meta)');
-    return { confirmed: false, predictions: [] };
-            }
-            
-            return result;
-
-        } catch (error) {
-            this.logError('Error añadiendo carta:', error);
-            this.eventBus.emit(GAME_EVENTS.SYSTEM_ERROR, { 
-                component: 'GameService',
-                error: error.message 
-            });
-            throw error;
+   async addOpponentCard(cardData) {
+    try {
+        this.log(`🃏 Procesando carta: ${cardData.name}`);
+        
+        // Validar datos de entrada
+        if (!this.validateCardData(cardData)) {
+            throw new Error('Datos de carta inválidos');
         }
-    }
+        
+        // Enriquecer carta con contexto del juego
+        const enrichedCard = this.enrichCard(cardData);
+        
+        // Añadir al historial
+        this.gameState.cardsPlayed.push(enrichedCard);
+        
+        // Procesar con prediction engine
+        const result = await this.predictionEngine.addOpponentCard(enrichedCard);
+        
+        if (!result) {
+            this.log('⚠️ No se pudo procesar la carta (sin datos del meta)');
+            return { confirmed: false, predictions: [] };
+        }
 
+        // ✅ AÑADIR: Emitir eventos a la UI
+        if (result.confirmed && result.deck) {
+            // Mazo confirmado - mostrar vista confirmada
+            this.gameState.isConfirmed = true;
+            this.gameState.confirmedDeck = result.deck;
+            
+            this.eventBus.emit(GAME_EVENTS.DECK_CONFIRMED, {
+                deck: result.deck,
+                probability: result.deck.probability,
+                cardsAnalyzed: this.gameState.cardsPlayed.length,
+                autoConfirmed: true
+            });
+            
+            this.log(`🎯 Emitiendo deck:confirmed para: ${result.deck.name}`);
+            
+        } else if (result.predictions && result.predictions.length > 0) {
+            // Predicciones actualizadas - mostrar vista predicciones
+            this.eventBus.emit(GAME_EVENTS.DECK_PREDICTION_UPDATED, {
+                predictions: result.predictions,
+                cardsAnalyzed: this.gameState.cardsPlayed.length,
+                lastCard: enrichedCard
+            });
+            
+            this.log(`📊 Emitiendo predicciones: ${result.predictions.length} mazos`);
+        }
+        
+        return result;
+
+    } catch (error) {
+        this.logError('Error añadiendo carta:', error);
+        this.eventBus.emit(GAME_EVENTS.SYSTEM_ERROR, { 
+            component: 'GameService',
+            error: error.message 
+        });
+        throw error;
+    }
+}
     /**
      * ⏰ Actualizar turno actual
      */

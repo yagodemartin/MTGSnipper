@@ -20,13 +20,17 @@ class ConfirmedDeckComponent extends BaseComponent {
     }
 
     async onInitialize() {
-        this.eventBus.on('deck:confirmed', (data) => {
-            this.setState({
-                confirmedDeck: data,
-                showDeckList: true
-            });
-            this.loadExpectedCards(data.deck);
+  this.log('🎯 Inicializando ConfirmedDeckComponent...');
+    
+    this.eventBus.on('deck:confirmed', (data) => {
+        this.log(`🎯 RECIBIDO deck:confirmed: ${data.deck?.name || 'Unknown'}`);
+        this.setState({
+            confirmedDeck: data.deck,
+            cardsAnalyzed: data.cardsAnalyzed || 0,
+            lastUpdate: Date.now(),
+            autoConfirmed: data.autoConfirmed || false
         });
+    });
 
         this.eventBus.on('card:played:confirmed', (data) => {
             this.updatePlayedCards(data);

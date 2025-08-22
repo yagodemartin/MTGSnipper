@@ -12,6 +12,8 @@ import PredictionsComponent from './PredictionsComponent.js';
 import ConfirmedDeckComponent from './ConfirmedDeckComponent.js';
 import StatusComponent from './StatusComponent.js';
 import DebugComponent from './DebugComponent.js';
+import MetaBrowserComponent from './MetaBrowserComponent.js';
+import DeckDetailComponent from './DeckDetailComponent.js';
 
 // Servicios de aplicación - RUTAS CORREGIDAS
 import { GameService, UIService, CardService } from '../../application/services/GameService.js';
@@ -165,8 +167,17 @@ class MTGArenaSnifferApp {
             debug: new DebugComponent(this.eventBus, {
                 database: this.databaseManager,
                 prediction: this.predictionEngine,
-                game: this.gameService
+                game: this.gameService ,
+        metaBrowser: new MetaBrowserComponent(this.eventBus, {
+            databaseManager: this.databaseManager,
+            uiService: this.uiService
+        }),
+        deckDetail: new DeckDetailComponent(this.eventBus, {
+            databaseManager: this.databaseManager,
+            uiService: this.uiService
+        })
             })
+            
         };
 
         // Inicializar cada componente
@@ -181,45 +192,57 @@ class MTGArenaSnifferApp {
     /**
      * 📡 Configurar event listeners globales
      */
-    setupEventListeners() {
-        this.log('📡 Configurando event listeners...');
+ setupEventListeners() {
+    this.log('📡 Configurando event listeners...');
 
-        // Eventos de predicción
-        this.eventBus.on(GAME_EVENTS.DECK_PREDICTION_UPDATED, (data) => {
-            this.handlePredictionUpdated(data);
-        });
+    // Eventos de predicción
+    this.eventBus.on(GAME_EVENTS.DECK_PREDICTION_UPDATED, (data) => {
+        this.handlePredictionUpdated(data);
+    });
 
-        this.eventBus.on(GAME_EVENTS.DECK_CONFIRMED, (data) => {
-            this.handleDeckConfirmed(data);
-        });
+    this.eventBus.on(GAME_EVENTS.DECK_CONFIRMED, (data) => {
+        this.handleDeckConfirmed(data);
+    });
 
-        // Eventos de UI
-        this.eventBus.on('ui:view-change-requested', (data) => {
-            this.handleViewChangeRequested(data);
-        });
+    // ✅ CORREGIR: Un solo listener para view-change-requested
+    this.eventBus.on('ui:view-change-requested', (data) => {
+        if (data.view === 'deck-detail' && data.deckId) {
+            this.showDeckDetail(data.deckId);
+        } else {
+            this.changeView(data.view);
+        }
+    });
 
-        this.eventBus.on('ui:card-added', (data) => {
-            this.handleCardAdded(data);
-        });
+    // ✅ AÑADIR: Eventos específicos de navegador de mazos
+    this.eventBus.on('ui:show-deck-detail', (data) => {
+        this.showDeckDetail(data.deckId);
+    });
 
-        // Eventos de sistema
-        this.eventBus.on(GAME_EVENTS.SYSTEM_ERROR, (data) => {
-            this.handleSystemError(data);
-        });
+    this.eventBus.on('ui:test-deck', (data) => {
+        this.handleTestDeck(data);
+    });
 
-        // Keyboard shortcuts
-        document.addEventListener('keydown', (e) => {
-            this.handleKeyboardShortcuts(e);
-        });
+    this.eventBus.on('ui:card-added', (data) => {
+        this.handleCardAdded(data);
+    });
 
-        // Window events
-        window.addEventListener('beforeunload', () => {
-            this.cleanup();
-        });
+    // Eventos de sistema
+    this.eventBus.on(GAME_EVENTS.SYSTEM_ERROR, (data) => {
+        this.handleSystemError(data);
+    });
 
-        this.log('✅ Event listeners configurados');
-    }
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        this.handleKeyboardShortcuts(e);
+    });
 
+    // Window events
+    window.addEventListener('beforeunload', () => {
+        this.cleanup();
+    });
+
+    this.log('✅ Event listeners configurados');
+}
     /**
      * 🎨 Renderizar interfaz principal
      */
@@ -246,69 +269,57 @@ class MTGArenaSnifferApp {
     /**
      * 🏗️ Template principal de la aplicación
      */
-    getMainTemplate() {
-        return `
-            <div class="mtg-sniffer-app ${this.config.theme}">
-                <!-- Header -->
-                <header id="header-container" class="app-header">
-                    <!-- HeaderComponent se renderiza aquí -->
-                </header>
+  getMainTemplate() {
+    return `
+        <div class="mtg-sniffer-app ${this.config.theme}">
+            <!-- Header -->
+            <header id="header-container" class="app-header"></header>
 
-                <!-- Main Content -->
-                <main class="app-main">
-                    <!-- Status Bar -->
-                    <div id="status-container" class="status-bar">
-                        <!-- StatusComponent se renderiza aquí -->
-                    </div>
+            <!-- Main Content -->
+            <main class="app-main">
+                <!-- Status Bar -->
+                <div id="status-container" class="status-bar"></div>
 
-                    <!-- Content Area -->
-                    <div class="content-area">
-                        <!-- Card Input -->
-                        <section id="card-input-container" class="card-input-section">
-                            <!-- CardInputComponent se renderiza aquí -->
+                <!-- Content Area -->
+                <div class="content-area">
+                    <!-- Card Input -->
+                    <section id="card-input-container" class="card-input-section"></section>
+
+                    <!-- Views Container -->
+                    <div class="views-container">
+                        <!-- Predictions View -->
+                        <section id="predictions-container" 
+                                 class="view-section ${this.state.currentView === 'prediction' ? 'active' : 'hidden'}">
                         </section>
 
-                        <!-- Views Container -->
-                        <div class="views-container">
-                            <!-- Predictions View -->
-                            <section id="predictions-container" 
-                                     class="view-section ${this.state.currentView === 'prediction' ? 'active' : 'hidden'}">
-                                <!-- PredictionsComponent se renderiza aquí -->
-                            </section>
+                        <!-- Confirmed Deck View -->
+                        <section id="confirmed-deck-container" 
+                                 class="view-section ${this.state.currentView === 'confirmed' ? 'active' : 'hidden'}">
+                        </section>
 
-                            <!-- Confirmed Deck View -->
-                            <section id="confirmed-deck-container" 
-                                     class="view-section ${this.state.currentView === 'confirmed' ? 'active' : 'hidden'}">
-                                <!-- ConfirmedDeckComponent se renderiza aquí -->
-                            </section>
+                        <!-- ✅ AÑADIR: Meta Browser View -->
+                        <section id="meta-browser-container" 
+                                 class="view-section ${this.state.currentView === 'meta-browser' ? 'active' : 'hidden'}">
+                        </section>
 
-                            <!-- Debug View -->
-                            <section id="debug-container" 
-                                     class="view-section ${this.state.currentView === 'debug' ? 'active' : 'hidden'}">
-                                <!-- DebugComponent se renderiza aquí -->
-                            </section>
-                        </div>
-                    </div>
-                </main>
+                        <!-- ✅ AÑADIR: Deck Detail View -->
+                        <section id="deck-detail-container" 
+                                 class="view-section ${this.state.currentView === 'deck-detail' ? 'active' : 'hidden'}">
+                        </section>
 
-                <!-- Loading Overlay -->
-                <div id="loading-overlay" class="loading-overlay ${this.state.isLoading ? 'visible' : 'hidden'}">
-                    <div class="loading-spinner"></div>
-                    <div class="loading-text">Procesando...</div>
-                </div>
-
-                <!-- Error Modal -->
-                <div id="error-modal" class="error-modal ${this.state.error ? 'visible' : 'hidden'}">
-                    <div class="error-content">
-                        <h3>Error</h3>
-                        <p>${this.state.error || ''}</p>
-                        <button onclick="window.mtgApp.dismissError()">Cerrar</button>
+                        <!-- Debug View -->
+                        <section id="debug-container" 
+                                 class="view-section ${this.state.currentView === 'debug' ? 'active' : 'hidden'}">
+                        </section>
                     </div>
                 </div>
-            </div>
-        `;
-    }
+            </main>
 
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="loading-overlay"></div>
+        </div>
+    `;
+}
     /**
      * 🎨 Renderizar todos los componentes
      */
@@ -321,6 +332,8 @@ class MTGArenaSnifferApp {
                     cardInput: 'card-input-container', 
                     predictions: 'predictions-container',
                     confirmedDeck: 'confirmed-deck-container',
+                      metaBrowser: 'meta-browser-container',    // ✅ AÑADIR
+                deckDetail: 'deck-detail-container',      
                     status: 'status-container',
                     debug: 'debug-container'
                 };
@@ -359,13 +372,18 @@ class MTGArenaSnifferApp {
     /**
      * 🎯 Manejar confirmación de mazo
      */
-    handleDeckConfirmed(data) {
-        this.log('🎯 Mazo confirmado', data);
-        
-        // Cambiar automáticamente a vista de mazo confirmado
-        this.changeView('confirmed');
-        
-        // Notificación visual
+ handleDeckConfirmed(data) {
+    this.log('🎯 Mazo confirmado', data);
+    
+    // ✅ AÑADIR debug
+    this.log(`🎯 Cambiando automáticamente a vista 'confirmed'`);
+    this.log(`🎯 Datos del mazo:`, data.deck?.name);
+    
+    // Cambiar automáticamente a vista de mazo confirmado
+    this.changeView('confirmed');
+    
+    // Notificación visual
+    if (this.uiService && this.uiService.showNotification) {
         this.uiService.showNotification({
             type: 'success',
             title: 'Mazo Confirmado',
@@ -373,6 +391,7 @@ class MTGArenaSnifferApp {
             duration: 5000
         });
     }
+}
 
     /**
      * 🎯 Manejar solicitud de cambio de vista
@@ -405,35 +424,47 @@ class MTGArenaSnifferApp {
     /**
      * 👀 Cambiar vista activa
      */
-    changeView(newView) {
-        if (this.state.currentView === newView) return;
+   changeView(newView) {
+    if (this.state.currentView === newView) return;
 
-        this.log(`👀 Cambiando vista: ${this.state.currentView} → ${newView}`);
+    this.log(`👀 Cambiando vista: ${this.state.currentView} → ${newView}`);
 
-        // Ocultar vista actual
-        const currentContainer = document.querySelector('.view-section.active');
-        if (currentContainer) {
-            currentContainer.classList.remove('active');
-            currentContainer.classList.add('hidden');
-        }
-
-        // Mostrar nueva vista
-        const newContainer = document.getElementById(`${newView}-container`) || 
-                           document.getElementById(`${newView}s-container`);
-        if (newContainer) {
-            newContainer.classList.remove('hidden');
-            newContainer.classList.add('active');
-        }
-
-        // Actualizar estado
-        this.setState({ currentView: newView });
-
-        // Emitir evento
-        this.eventBus.emit('ui:view-changed', { 
-            from: this.state.currentView,
-            to: newView 
-        });
+    // Ocultar vista actual
+    const currentContainer = document.querySelector('.view-section.active');
+    if (currentContainer) {
+        currentContainer.classList.remove('active');
+        currentContainer.classList.add('hidden');
     }
+
+    // ✅ CORREGIR: Mapeo correcto de vistas a contenedores
+    const containerMap = {
+        'prediction': 'predictions-container',
+        'confirmed': 'confirmed-deck-container',
+        'meta-browser': 'meta-browser-container',
+        'deck-detail': 'deck-detail-container',
+        'debug': 'debug-container'
+    };
+
+    const containerId = containerMap[newView];
+    const newContainer = document.getElementById(containerId);
+    
+    if (newContainer) {
+        newContainer.classList.remove('hidden');
+        newContainer.classList.add('active');
+        this.log(`✅ Vista cambiada a: ${newView} (${containerId})`);
+    } else {
+        this.logError(`❌ Contenedor no encontrado: ${containerId}`);
+    }
+
+    // Actualizar estado
+    this.setState({ currentView: newView });
+
+    // Emitir evento
+    this.eventBus.emit('ui:view-changed', { 
+        from: this.state.currentView,
+        to: newView 
+    });
+}
 
     /**
      * ⌨️ Manejar shortcuts de teclado
@@ -611,6 +642,46 @@ class MTGArenaSnifferApp {
             });
         }
     }
+
+    /**
+ * 📋 Mostrar detalle de mazo específico
+ */
+async showDeckDetail(deckId) {
+    this.log(`📋 Mostrando detalle del mazo: ${deckId}`);
+    
+    // Cambiar a vista de detalle
+    this.changeView('deck-detail');
+    
+    // Cargar detalle del mazo
+    this.eventBus.emit('ui:show-deck-detail', { deckId });
+}
+
+/**
+ * 🧪 Manejar test de mazo
+ */
+handleTestDeck(data) {
+    this.log('🧪 Probando mazo:', data.deck.name);
+    
+    // Simular cartas del mazo para testing
+    if (data.testCards && data.testCards.length > 0) {
+        data.testCards.forEach((card, index) => {
+            setTimeout(() => {
+                this.gameService.addOpponentCard({
+                    name: card.name,
+                    turn: index + 1,
+                    timestamp: Date.now()
+                });
+            }, index * 1000); // 1 segundo entre cartas
+        });
+    }
+    
+    this.uiService.showNotification({
+        type: 'info',
+        title: 'Test iniciado',
+        message: `Probando ${data.deck.name} con ${data.testCards.length} cartas`,
+        duration: 3000
+    });
+}
 
     /**
      * 🧹 Cleanup al cerrar aplicación

@@ -1,0 +1,475 @@
+/* css/branding.css */
+/* 🎨 Personalización de Branding y Colores Mágicos */
+
+/* =================================
+   VARIABLES DE BRANDING PERSONALIZADAS
+   ================================= */
+:root {
+    /* Colores principales inspirados en el logo */
+    --brand-primary: #4A90E2;        /* Azul principal del logo */
+    --brand-secondary: #7B68EE;      /* Azul-púrpura mágico */
+    --brand-accent: #00D4FF;         /* Azul brillante */
+    --brand-dark: #1a237e;           /* Azul oscuro */
+    --brand-light: #E3F2FD;          /* Azul muy claro */
+    
+    /* Gradientes mágicos */
+    --gradient-primary: linear-gradient(135deg, #4A90E2, #7B68EE);
+    --gradient-secondary: linear-gradient(45deg, #00D4FF, #4A90E2);
+    --gradient-accent: linear-gradient(90deg, #7B68EE, #9C27B0);
+    --gradient-bg: linear-gradient(135deg, #0f1419, #1a237e);
+    
+    /* Efectos mágicos */
+    --glow-primary: 0 0 20px rgba(74, 144, 226, 0.4);
+    --glow-secondary: 0 0 15px rgba(123, 104, 238, 0.3);
+    --glow-accent: 0 0 10px rgba(0, 212, 255, 0.5);
+    
+    /* Actualizar colores base */
+    --primary-color: var(--brand-primary);
+    --secondary-color: var(--brand-secondary);
+    --accent-color: var(--brand-accent);
+    
+    /* Fondos actualizados */
+    --bg-primary: #0f1419;
+    --bg-secondary: #1a1f2e;
+    --bg-tertiary: rgba(74, 144, 226, 0.08);
+    --bg-card: rgba(123, 104, 238, 0.12);
+    --bg-glass: rgba(74, 144, 226, 0.05);
+}
+
+/* =================================
+   HEADER PERSONALIZADO CON BRANDING
+   ================================= */
+.app-header {
+    background: var(--gradient-bg);
+    backdrop-filter: blur(30px);
+    border-bottom: 2px solid var(--brand-primary);
+    box-shadow: var(--glow-primary);
+    position: relative;
+    overflow: hidden;
+}
+
+.app-header::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: var(--gradient-secondary);
+    animation: brandPulse 3s ease-in-out infinite;
+}
+
+@keyframes brandPulse {
+    0%, 100% { opacity: 0.8; transform: scaleX(1); }
+    50% { opacity: 1; transform: scaleX(1.02); }
+}
+
+.header-component {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    position: relative;
+}
+
+/* =================================
+   BRANDING SECTION MEJORADO
+   ================================= */
+.header-brand {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    position: relative;
+}
+
+.brand-icon {
+    font-size: 2.5rem;
+    background: var(--gradient-primary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(var(--glow-primary));
+    animation: brandGlow 4s ease-in-out infinite;
+}
+
+@keyframes brandGlow {
+    0%, 100% { filter: drop-shadow(var(--glow-primary)); }
+    50% { filter: drop-shadow(var(--glow-accent)); }
+}
+
+.brand-title {
+    font-size: 1.75rem;
+    font-weight: 900;
+    background: var(--gradient-secondary);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin: 0;
+    text-shadow: var(--glow-secondary);
+    letter-spacing: -0.5px;
+}
+
+.brand-tagline {
+    font-size: 0.75rem;
+    color: var(--brand-light);
+    opacity: 0.8;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-top: 0.25rem;
+}
+
+/* =================================
+   NAVEGACIÓN CON BANDA DE COLORES
+   ================================= */
+.header-navigation {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    position: relative;
+}
+
+.nav-tabs {
+    display: flex;
+    gap: 0.5rem;
+    background: rgba(0, 0, 0, 0.3);
+    padding: 0.5rem;
+    border-radius: 25px;
+    border: 1px solid var(--brand-primary);
+    backdrop-filter: blur(20px);
+    position: relative;
+    overflow: hidden;
+}
+
+.nav-tabs::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--gradient-primary);
+    opacity: 0.1;
+    border-radius: 25px;
+}
+
+.nav-tab {
+    background: transparent;
+    border: none;
+    color: var(--brand-light);
+    padding: 0.75rem 1.5rem;
+    border-radius: 20px;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    z-index: 1;
+    white-space: nowrap;
+}
+
+.nav-tab:hover {
+    background: rgba(74, 144, 226, 0.2);
+    color: white;
+    transform: translateY(-2px);
+    box-shadow: var(--glow-primary);
+}
+
+.nav-tab.active {
+    background: var(--gradient-primary);
+    color: white;
+    box-shadow: var(--glow-primary);
+    transform: translateY(-1px);
+}
+
+.nav-tab.active::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    left: -2px;
+    right: -2px;
+    bottom: -2px;
+    background: var(--gradient-secondary);
+    border-radius: 22px;
+    z-index: -1;
+    animation: activeTabGlow 2s ease-in-out infinite;
+}
+
+@keyframes activeTabGlow {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* =================================
+   STATUS INDICATORS MÁGICOS
+   ================================= */
+.header-status {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.status-indicators {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.5rem 1rem;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 15px;
+    border: 1px solid var(--brand-primary);
+    backdrop-filter: blur(15px);
+}
+
+.status-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.875rem;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--brand-accent);
+    box-shadow: var(--glow-accent);
+    animation: statusPulse 2s ease-in-out infinite;
+}
+
+.status-item.connected .status-dot {
+    background: var(--success-color);
+    box-shadow: 0 0 10px rgba(52, 199, 89, 0.5);
+}
+
+.status-item.disconnected .status-dot {
+    background: var(--error-color);
+    box-shadow: 0 0 10px rgba(255, 59, 48, 0.5);
+}
+
+@keyframes statusPulse {
+    0%, 100% { transform: scale(1); opacity: 1; }
+    50% { transform: scale(1.2); opacity: 0.8; }
+}
+
+.format-badge {
+    background: var(--gradient-accent);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    box-shadow: var(--glow-secondary);
+}
+
+.update-time {
+    color: var(--brand-light);
+    opacity: 0.8;
+    font-size: 0.75rem;
+}
+
+/* =================================
+   BOTONES DE ACCIÓN MÁGICOS
+   ================================= */
+.header-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.header-actions .btn {
+    background: rgba(74, 144, 226, 0.2);
+    border: 1px solid var(--brand-primary);
+    color: var(--brand-light);
+    padding: 0.5rem;
+    border-radius: 10px;
+    transition: all 0.3s ease;
+    backdrop-filter: blur(10px);
+}
+
+.header-actions .btn:hover {
+    background: var(--gradient-primary);
+    color: white;
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: var(--glow-primary);
+}
+
+/* =================================
+   EFECTOS GLOBALES DE BRANDING
+   ================================= */
+
+/* Botones principales con nuevo branding */
+.btn-primary {
+    background: var(--gradient-primary) !important;
+    border: none !important;
+    box-shadow: var(--glow-primary) !important;
+}
+
+.btn-primary:hover {
+    background: var(--gradient-secondary) !important;
+    box-shadow: var(--glow-accent) !important;
+    transform: translateY(-2px) scale(1.02) !important;
+}
+
+.btn-secondary {
+    background: rgba(123, 104, 238, 0.2) !important;
+    border: 1px solid var(--brand-secondary) !important;
+    color: var(--brand-light) !important;
+}
+
+.btn-secondary:hover {
+    background: var(--gradient-accent) !important;
+    color: white !important;
+    box-shadow: var(--glow-secondary) !important;
+}
+
+/* Cards con nuevo branding */
+.card-input-section,
+.views-container,
+.status-bar {
+    background: var(--bg-tertiary) !important;
+    border: 1px solid rgba(74, 144, 226, 0.3) !important;
+    box-shadow: var(--glow-primary) !important;
+}
+
+/* Inputs con branding */
+.card-input:focus,
+.search-input:focus,
+select:focus {
+    border-color: var(--brand-primary) !important;
+    background: rgba(74, 144, 226, 0.1) !important;
+    box-shadow: 0 0 0 4px rgba(74, 144, 226, 0.2) !important;
+}
+
+/* Predicciones con branding */
+.prediction-item:hover {
+    border-color: var(--brand-primary) !important;
+    box-shadow: var(--glow-primary) !important;
+}
+
+.prediction-rank {
+    background: var(--gradient-primary) !important;
+    box-shadow: var(--glow-primary) !important;
+}
+
+.top-prediction .prediction-rank {
+    background: var(--gradient-secondary) !important;
+    box-shadow: var(--glow-accent) !important;
+}
+
+/* Scrollbars con branding */
+::-webkit-scrollbar-thumb {
+    background: var(--gradient-primary) !important;
+    border: 1px solid var(--brand-primary) !important;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: var(--gradient-secondary) !important;
+}
+
+/* =================================
+   ANIMACIONES MÁGICAS GLOBALES
+   ================================= */
+@keyframes magicShimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+.magic-shimmer {
+    background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(74, 144, 226, 0.4),
+        transparent
+    );
+    background-size: 200% 100%;
+    animation: magicShimmer 2s infinite;
+}
+
+/* Partículas mágicas opcionales */
+.magic-particles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    overflow: hidden;
+}
+
+.magic-particles::before,
+.magic-particles::after {
+    content: '✨';
+    position: absolute;
+    color: var(--brand-accent);
+    font-size: 1rem;
+    animation: floatParticles 8s infinite ease-in-out;
+}
+
+.magic-particles::before {
+    top: 20%;
+    left: 10%;
+    animation-delay: -2s;
+}
+
+.magic-particles::after {
+    top: 60%;
+    right: 15%;
+    animation-delay: -4s;
+}
+
+@keyframes floatParticles {
+    0%, 100% { 
+        transform: translateY(0px) rotate(0deg);
+        opacity: 0.3;
+    }
+    50% { 
+        transform: translateY(-20px) rotate(180deg);
+        opacity: 0.8;
+    }
+}
+
+/* =================================
+   RESPONSIVE PARA BRANDING
+   ================================= */
+@media (max-width: 768px) {
+    .header-component {
+        flex-direction: column;
+        gap: 1rem;
+        padding: 1rem;
+    }
+    
+    .nav-tabs {
+        width: 100%;
+        justify-content: space-around;
+    }
+    
+    .nav-tab {
+        padding: 0.5rem 1rem;
+        font-size: 0.8rem;
+    }
+    
+    .brand-title {
+        font-size: 1.5rem;
+    }
+    
+    .status-indicators {
+        flex-wrap: wrap;
+        gap: 0.5rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .nav-tab {
+        padding: 0.5rem 0.75rem;
+        font-size: 0.75rem;
+    }
+    
+    .brand-title {
+        font-size: 1.25rem;
+    }
+    
+    .brand-icon {
+        font-size: 2rem;
+    }
+}

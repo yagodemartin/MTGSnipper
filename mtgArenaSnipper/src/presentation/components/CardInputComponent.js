@@ -241,19 +241,7 @@ updateQuickCards(metaData) {
         </button>
     </div>
 </div>
-                    
-                    <div class="quick-buttons">
-                        <button class="btn btn-sm btn-quick-card" data-card="Lightning Bolt">
-                            ⚡ Lightning Bolt
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Counterspell">
-                            🚫 Counterspell
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Teferi, Hero of Dominaria">
-                            🧙 Teferi
-                        </button>
-                    </div>
-                </div>
+                 
 
                 ${this.state.recentCards.length > 0 ? `
                     <div class="recent-cards">
@@ -639,13 +627,17 @@ async searchCardSuggestions(query) {
         });
     }
 
-    shouldRerender(prevState, newState) {
-        return prevState.suggestions.length !== newState.suggestions.length ||
-               prevState.recentCards.length !== newState.recentCards.length ||
-               prevState.isLoading !== newState.isLoading ||
-               prevState.showingCardImage !== newState.showingCardImage ||
-               prevState.turn !== newState.turn;
-    }
+shouldRerender(prevState, newState) {
+    // ❌ EVITAR re-renders constantes - solo re-render cuando hay cambios significativos
+    return (
+        prevState.suggestions.length !== newState.suggestions.length ||
+        prevState.recentCards.length !== newState.recentCards.length ||
+        prevState.isLoading !== newState.isLoading ||
+        prevState.showingCardImage !== newState.showingCardImage ||
+        prevState.turn !== newState.turn ||
+        prevState.quickCards.length !== newState.quickCards.length  // ← AÑADIR ESTA LÍNEA
+    );
+}
 
     onCleanup() {
         if (this.state.imageLoadTimeout) {
@@ -663,14 +655,25 @@ async searchCardSuggestions(query) {
 }
 
 async onRender() {
-    // Cargar botones dinámicos después del render
-    await this.loadQuickButtons();
-    
-    // Debug de inicialización
-    this.log('🔧 Debug - GameService:', !!this.dependencies.gameService);
-    this.log('🔧 Debug - PredictionEngine:', !!this.dependencies.gameService?.predictionEngine);
-    this.log('🔧 Debug - DatabaseManager:', !!this.dependencies.gameService?.predictionEngine?.db);
+    try {
+        // ✅ THROTTLING: solo ejecutar cada 2 segundos
+        if (this._lastRender && (Date.now() - this._lastRender) < 2000) {
+            return;
+        }
+        this._lastRender = Date.now();
+        
+        // Cargar botones dinámicos después del render
+        await this.loadQuickCardsFromMeta();
+        
+        // Debug de inicialización
+        this.log('🔧 Debug - GameService:', !!this.dependencies.gameService);
+        this.log('🔧 Debug - PredictionEngine:', !!this.dependencies.gameService?.predictionEngine);
+        this.log('🔧 Debug - DatabaseManager:', !!this.dependencies.gameService?.predictionEngine?.db);
+    } catch (error) {
+        this.logError('Error en onRender:', error);
+    }
 }
+
 }
 
 export default CardInputComponent;

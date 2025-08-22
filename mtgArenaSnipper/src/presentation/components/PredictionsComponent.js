@@ -15,24 +15,29 @@ class PredictionsComponent extends BaseComponent {
         };
     }
 
-    async onInitialize() {
-        this.eventBus.on('deck:prediction:updated', (data) => {
-            this.setState({
-                predictions: data.predictions || [],
-                cardsAnalyzed: data.cardsAnalyzed || 0,
-                lastUpdate: Date.now(),
-                isLoading: false
-            });
+   async onInitialize() {
+    this.log('🎯 Inicializando PredictionsComponent...');
+    
+    this.eventBus.on('deck:prediction:updated', (data) => {
+        this.log(`📊 RECIBIDO: ${data.predictions?.length || 0} predicciones`);
+        this.setState({
+            predictions: data.predictions || [],
+            cardsAnalyzed: data.cardsAnalyzed || 0,
+            lastUpdate: Date.now(),
+            isLoading: false
         });
+    });
 
-        this.eventBus.on('game:reset', () => {
-            this.setState({
-                predictions: [],
-                cardsAnalyzed: 0,
-                lastUpdate: null
-            });
+    this.eventBus.on('game:reset', () => {
+        this.setState({
+            predictions: [],
+            cardsAnalyzed: 0,
+            lastUpdate: null
         });
-    }
+    });
+    
+    this.log('✅ PredictionsComponent listeners configurados');
+}
 
     getTemplate() {
         if (this.state.predictions.length === 0) {
