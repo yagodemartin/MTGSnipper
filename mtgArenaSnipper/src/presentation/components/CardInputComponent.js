@@ -4,40 +4,149 @@
 import BaseComponent from './BaseComponent.js';
 
 class CardInputComponent extends BaseComponent {
-    constructor(eventBus, gameService) {
-        super(eventBus, { gameService });
-        
-        this.state = {
-            currentCard: '',
-            suggestions: [],
-            turn: 1,
-            isLoading: false,
+   constructor(eventBus, gameService) {
+    super(eventBus, { gameService });
+    
+    this.state = {
+        currentCard: '',
+        suggestions: [],
+        turn: 1,
+        isLoading: false,
+        recentCards: [],
+        showingCardImage: null,
+        imageLoadTimeout: null,
+        quickCards: [] // ← AÑADIR: cartas rápidas dinámicas
+    };
+}
+
+
+   async onInitialize() {
+    // Configurar listeners de eventos globales
+    this.eventBus.on('turn:updated', (data) => {
+        this.setState({ turn: data.turn });
+    });
+
+    this.eventBus.on('game:reset', () => {
+        this.setState({ 
+            currentCard: '', 
+            turn: 1, 
             recentCards: [],
-            showingCardImage: null,
-            imageLoadTimeout: null
-        };
-    }
-
-    async onInitialize() {
-        // Configurar listeners de eventos globales
-        this.eventBus.on('turn:updated', (data) => {
-            this.setState({ turn: data.turn });
+            showingCardImage: null
         });
+    });
 
-        this.eventBus.on('game:reset', () => {
-            this.setState({ 
-                currentCard: '', 
-                turn: 1, 
-                recentCards: [],
-                showingCardImage: null
+    // Escuchar cuando se añaden cartas para mostrar imagen
+    this.eventBus.on('ui:card-added', (data) => {
+        this.showCardPreview(data.card);
+    });
+
+    // ← AÑADIR: Escuchar cuando se actualizan los datos del meta
+    this.eventBus.on('database:updated', (data) => {
+        this.updateQuickCards(data);
+    });
+
+    // Cargar quick cards iniciales
+    await this.loadQuickCardsFromMeta();
+}
+
+/**
+ * 🎯 Cargar cartas rápidas desde el meta actual
+ */
+async loadQuickCardsFromMeta() {
+    try {
+        // Obtener datos del meta desde el gameService
+        const metaData = await this.dependencies.gameService.databaseManager.getMetaData();
+        
+        if (metaData && metaData.decks) {
+            const popularCards = this.extractPopularCards(metaData.decks);
+            this.setState({ quickCards: popularCards });
+            this.log(`🎯 ${popularCards.length} cartas populares cargadas para quick buttons`);
+        } else {
+            // Fallback si no hay meta data
+            this.setState({ quickCards: this.getDefaultQuickCards() });
+        }
+    } catch (error) {
+        this.logError('Error cargando quick cards del meta:', error);
+        this.setState({ quickCards: this.getDefaultQuickCards() });
+    }
+}
+
+/**
+ * 📊 Extraer cartas populares del meta
+ */
+extractPopularCards(decks) {
+    const cardPopularity = {};
+    
+    // Contar popularidad de cada carta
+    decks.forEach(deck => {
+        if (deck.mainboard) {
+            deck.mainboard.forEach(card => {
+                const name = card.name;
+                if (!cardPopularity[name]) {
+                    cardPopularity[name] = {
+                        name: name,
+                        count: 0,
+                        totalQuantity: 0,
+                        decks: []
+                    };
+                }
+                cardPopularity[name].count++;
+                cardPopularity[name].totalQuantity += card.quantity || 1;
+                cardPopularity[name].decks.push(deck.name);
             });
-        });
+        }
+    });
+    
+    // Ordenar por popularidad y seleccionar top cartas
+    const sortedCards = Object.values(cardPopularity)
+        .filter(card => card.count >= 2) // Al menos en 2 mazos
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 12); // Top 12 cartas populares
+    
+    // Categorizar cartas para botones rápidos
+    const categories = {
+        lands: [],
+        threats: [],
+        spells: [],
+        generic: []
+    };
+    
+    sortedCards.forEach(card => {
+        const name = card.name.toLowerCase();
+        
+        if (name.includes('mountain') || name.includes('island') || name.includes('plains') || 
+            name.includes('swamp') || name.includes('forest')) {
+            categories.lands.push(card);
+        } else if (name.includes('bolt') || name.includes('push') || name.includes('torch')) {
+            categories.spells.push(card);
+        } else if (name.includes('terror') || name.includes('horror') || name.includes('knight')) {
+            categories.threats.push(card);
+        } else {
+            categories.generic.push(card);
+        }
+    });
+    
+    // Seleccionar mix balanceado
+    const quickCards = [
+        ...categories.lands.slice(0, 3),
+        ...categories.spells.slice(0, 3),
+        ...categories.threats.slice(0, 2),
+        ...categories.generic.slice(0, 4)
+    ].slice(0, 10); // Máximo 10 botones
+    
+    return quickCards;
+}
 
-        // Escuchar cuando se añaden cartas para mostrar imagen
-        this.eventBus.on('ui:card-added', (data) => {
-            this.showCardPreview(data.card);
-        });
+/**
+ * 🔄 Actualizar cartas rápidas cuando cambia el meta
+ */
+updateQuickCards(metaData) {
+    if (metaData && metaData.decks) {
+        const popularCards = this.extractPopularCards(metaData.decks);
+        this.setState({ quickCards: popularCards });
+        this.log(`🔄 Quick cards actualizadas: ${popularCards.length} cartas`);
     }
+}
 
     getTemplate() {
         return `
@@ -96,8 +205,8 @@ class CardInputComponent extends BaseComponent {
                                     <img src="${this.state.showingCardImage.imageUrl}" 
                                          alt="${this.state.showingCardImage.name}"
                                          class="card-preview-image"
-                                         onerror="this.src='https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(this.state.showingCardImage.name)}'">
-                                </div>
+                                        onerror="this.src='data:image/svg+xml;base64,${this.generateCardPlaceholder(this.state.showingCardImage.name)}'"
+                                    </div>
                                 <div class="card-preview-info">
                                     <h5>${this.state.showingCardImage.name}</h5>
                                     <p><strong>Turno:</strong> ${this.state.showingCardImage.turn}</p>
@@ -107,26 +216,31 @@ class CardInputComponent extends BaseComponent {
                         </div>
                     </div>
                 ` : ''}
-
-                <div class="quick-actions">
-                    <h4>🎯 Cartas Rápidas</h4>
-                    <div class="quick-buttons">
-                        <button class="btn btn-sm btn-quick-card" data-card="Mountain">
-                            🔴 Mountain
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Island">
-                            🔵 Island
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Plains">
-                            ⚪ Plains
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Swamp">
-                            ⚫ Swamp
-                        </button>
-                        <button class="btn btn-sm btn-quick-card" data-card="Forest">
-                            🟢 Forest
-                        </button>
-                    </div>
+<div class="quick-actions">
+    <h4>🎯 Cartas Populares del Meta</h4>
+    <div class="quick-buttons">
+        ${this.state.quickCards.length > 0 ? 
+            this.state.quickCards.map(card => `
+                <button class="btn btn-sm btn-quick-card" data-card="${card.name}">
+                    ${card.emoji || '🃏'} ${card.name}
+                    ${card.count ? `<small>(${card.count} mazos)</small>` : ''}
+                </button>
+            `).join('') 
+            : 
+            this.getDefaultQuickCards().map(card => `
+                <button class="btn btn-sm btn-quick-card" data-card="${card.name}">
+                    ${card.emoji} ${card.name}
+                </button>
+            `).join('')
+        }
+    </div>
+    
+    <div class="quick-buttons-secondary">
+        <button class="btn btn-sm btn-secondary" id="refresh-quick-cards">
+            🔄 Actualizar cartas populares
+        </button>
+    </div>
+</div>
                     
                     <div class="quick-buttons">
                         <button class="btn btn-sm btn-quick-card" data-card="Lightning Bolt">
@@ -259,6 +373,14 @@ class CardInputComponent extends BaseComponent {
                 this.forceAnalysis();
             });
         }
+
+        // Botón de refresh quick cards
+const refreshQuickBtn = this.$('#refresh-quick-cards');
+if (refreshQuickBtn) {
+    this.addEventListener(refreshQuickBtn, 'click', () => {
+        this.loadQuickCardsFromMeta();
+    });
+}
     }
 
     async handleCardInput(value) {
@@ -274,57 +396,74 @@ class CardInputComponent extends BaseComponent {
     }
 
     async addCard() {
-        const cardName = this.state.currentCard.trim();
-        
-        if (!cardName) {
-            this.showError('Por favor ingresa el nombre de una carta');
-            return;
-        }
-
-        try {
-            this.setState({ isLoading: true });
-
-            // Crear datos de la carta
-            const cardData = {
-                name: cardName,
-                turn: this.state.turn,
-                timestamp: Date.now()
-            };
-
-            // Enviar al GameService
-            const result = await this.dependencies.gameService.addOpponentCard(cardData);
-
-            // Obtener imagen de la carta
-            const imageUrl = await this.getCardImage(cardName);
-            
-            // Actualizar estado local
-            const cardWithImage = { ...cardData, imageUrl };
-            const recentCards = [...this.state.recentCards, cardWithImage];
-            
-            this.setState({ 
-                currentCard: '', 
-                suggestions: [],
-                recentCards,
-                isLoading: false 
-            });
-
-            // Emitir evento con imagen
-            this.eventBus.emit('ui:card-added', { card: cardWithImage });
-
-            // Mostrar preview de la carta
-            this.showCardPreview(cardWithImage);
-
-            // Auto-incrementar turno si es la primera carta del turno
-            this.autoIncrementTurn();
-
-            this.log(`✅ Carta añadida: ${cardName}`);
-
-        } catch (error) {
-            this.setState({ isLoading: false });
-            this.logError('Error añadiendo carta:', error);
-            this.showError('Error procesando la carta');
-        }
+    const cardName = this.state.currentCard.trim();
+    
+    if (!cardName) {
+        this.showError('Por favor ingresa el nombre de una carta');
+        return;
     }
+
+    try {
+        this.setState({ isLoading: true });
+        
+        // **VERIFICAR que GameService existe**
+        if (!this.dependencies.gameService) {
+            throw new Error('GameService no disponible');
+        }
+
+        this.log(`🃏 Procesando carta: ${cardName}`);
+
+        // Crear datos de la carta
+        const cardData = {
+            name: cardName,
+            turn: this.state.turn,
+            timestamp: Date.now()
+        };
+
+        // **VERIFICAR que la función existe**
+        if (typeof this.dependencies.gameService.addOpponentCard !== 'function') {
+            throw new Error('Método addOpponentCard no disponible');
+        }
+
+        // Enviar al GameService
+        const result = await this.dependencies.gameService.addOpponentCard(cardData);
+        
+        // **VERIFICAR resultado**
+        if (!result) {
+            this.log('⚠️ No se pudieron generar predicciones (posible falta de datos del meta)');
+        }
+
+        // Obtener imagen de la carta
+        const imageUrl = await this.getCardImage(cardName);
+        
+        // Actualizar estado local
+        const cardWithImage = { ...cardData, imageUrl };
+        const recentCards = [...this.state.recentCards, cardWithImage];
+        
+        this.setState({ 
+            currentCard: '', 
+            suggestions: [],
+            recentCards,
+            isLoading: false 
+        });
+
+        // Emitir evento con imagen
+        this.eventBus.emit('ui:card-added', { card: cardWithImage });
+
+        // Mostrar preview de la carta
+        this.showCardPreview(cardWithImage);
+
+        // Auto-incrementar turno
+        this.autoIncrementTurn();
+
+        this.log(`✅ Carta añadida: ${cardName}`);
+
+    } catch (error) {
+        this.setState({ isLoading: false });
+        this.logError('Error añadiendo carta:', error);
+        this.showError(`Error: ${error.message}`);
+    }
+}
 
     addQuickCard(cardName) {
         this.setState({ currentCard: cardName });
@@ -453,22 +592,26 @@ class CardInputComponent extends BaseComponent {
         }
     }
 
-    async searchCardSuggestions(query) {
-        // Sugerencias básicas de cartas comunes
-        const commonCards = [
-            'Lightning Bolt', 'Counterspell', 'Teferi, Hero of Dominaria',
-            'Monastery Swiftspear', 'Goblin Guide', 'Atraxa, Grand Unifier',
-            'Up the Beanstalk', 'Leyline of the Guildpact', 'Sheoldred, the Apocalypse',
-            'Fable of the Mirror-Breaker', 'Wedding Announcement', 'Raffine, Scheming Seer',
-            'Izzet Cauldron', 'Supreme Verdict', 'Omnath, Locus of All',
-            'Mountain', 'Island', 'Plains', 'Swamp', 'Forest'
-        ];
-
-        return commonCards
-            .filter(card => card.toLowerCase().includes(query.toLowerCase()))
-            .slice(0, 6)
-            .map(name => ({ name, type: 'Carta' }));
+   // ELIMINAR las cartas hardcodeadas y CAMBIAR POR:
+async searchCardSuggestions(query) {
+    try {
+        // Buscar en el meta actual
+        const metaData = await this.dependencies.gameService.predictionEngine.db.getMetaData();
+        
+        if (metaData?.indices?.byCard) {
+            const allCards = Object.keys(metaData.indices.byCard);
+            return allCards
+                .filter(card => card.toLowerCase().includes(query.toLowerCase()))
+                .slice(0, 6)
+                .map(name => ({ name, type: 'Meta' }));
+        }
+        
+        return [];
+    } catch (error) {
+        this.logError('Error buscando sugerencias:', error);
+        return [];
     }
+}
 
     formatTime(timestamp) {
         const date = new Date(timestamp);
@@ -509,6 +652,25 @@ class CardInputComponent extends BaseComponent {
             clearTimeout(this.state.imageLoadTimeout);
         }
     }
+
+    generateCardPlaceholder(cardName) {
+    const cleanName = cardName.substring(0, 20); // Máximo 20 chars
+    const svg = `<svg width="200" height="280" xmlns="http://www.w3.org/2000/svg">
+        <rect width="200" height="280" fill="#333333"/>
+        <text x="100" y="140" text-anchor="middle" fill="white" font-size="12">${cleanName}</text>
+    </svg>`;
+    return btoa(svg);
+}
+
+async onRender() {
+    // Cargar botones dinámicos después del render
+    await this.loadQuickButtons();
+    
+    // Debug de inicialización
+    this.log('🔧 Debug - GameService:', !!this.dependencies.gameService);
+    this.log('🔧 Debug - PredictionEngine:', !!this.dependencies.gameService?.predictionEngine);
+    this.log('🔧 Debug - DatabaseManager:', !!this.dependencies.gameService?.predictionEngine?.db);
+}
 }
 
 export default CardInputComponent;

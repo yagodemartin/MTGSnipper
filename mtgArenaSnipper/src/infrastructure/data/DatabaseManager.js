@@ -99,10 +99,9 @@ class DatabaseManager {
                 throw new Error('No se obtuvieron datos válidos del scraper');
             }
 
-            // Verificar que tenemos cartas reales
-            const decksWithCards = freshData.decks.filter(deck => 
-                deck.mainboard && deck.mainboard.length > 10
-            );
+      const decksWithCards = freshData.decks.filter(deck => 
+    deck.mainboard && deck.mainboard.length > 3  // 3+ cartas del breakdown
+);
 
             if (decksWithCards.length === 0) {
                 throw new Error('No se scrapearon cartas reales de los mazos');

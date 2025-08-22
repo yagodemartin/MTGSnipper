@@ -1,21 +1,20 @@
 // src/infrastructure/data/MTGGoldfishCompleteScraper.js
-// 🐟 Scraper COMPLETO con todas las cartas e imágenes
+// 🐟 Scraper usando Card Breakdown de MTGGoldfish
 
 class MTGGoldfishCompleteScraper {
     constructor() {
         this.baseUrl = 'https://www.mtggoldfish.com';
         this.metaUrl = '/metagame/standard#paper';
         
-       this.corsProxies = [
-    'https://api.allorigins.win/raw?url=',
-    'https://corsproxy.io/?',
-    'https://api.codetabs.com/v1/proxy?quest='
-];
+        this.corsProxies = [
+            'https://api.allorigins.win/raw?url=',
+            'https://corsproxy.io/?',
+            'https://api.codetabs.com/v1/proxy?quest='
+        ];
         
-    // POR:
-    this.rateLimitDelay = 3000;
-    this.timeout = 15000;
-    this.maxDecks = 5;
+        this.rateLimitDelay = 3000;
+        this.timeout = 15000;
+        this.maxDecks = 8;
         this.debugMode = true;
         
         // Cache de imágenes
@@ -26,64 +25,42 @@ class MTGGoldfishCompleteScraper {
         this.scryfallSearchUrl = 'https://api.scryfall.com/cards/named?exact=';
     }
 
-async scrapeCompleteMetaData() {
-    try {
-        this.log('🐟 Scraping COMPLETO con cartas...');
-        
-        // 1. Obtener arquetipos del meta
-        const metaDecks = await this.scrapeMetaOverview();
-        
-        if (!metaDecks || metaDecks.length === 0) {
-            throw new Error('No se pudieron obtener arquetipos');
-        }
-
-        this.log(`📋 Encontrados ${metaDecks.length} arquetipos, scrapeando cartas...`);
-
-        // 2. CAMBIAR ESTA LÍNEA - Scrapear cartas de cada mazo:
-        const completeDecks = await this.scrapeAllDeckListsWithImages(metaDecks);
-
-        const finalData = {
-            lastUpdated: new Date().toISOString(),
-            format: 'standard',
-            source: 'MTGGoldfish-Complete',
-            deckCount: completeDecks.length,
-            decks: completeDecks // <- Mazos CON cartas
-        };
-
-        this.log(`✅ Scraping completo: ${completeDecks.length} mazos con cartas`);
-        return finalData;
-
-    } catch (error) {
-        this.logError('❌ Error en scraping:', error);
-        throw error;
-    }
-}
-
     /**
-     * 🧪 Probar proxies rápidamente
+     * 🐟 Scraping completo usando Card Breakdown
      */
-    async testProxies() {
-        this.log('🧪 Probando proxies...');
-        
-        for (const proxy of this.corsProxies) {
-            try {
-                const testResult = await this.testSingleProxy(proxy, 'https://httpbin.org/json');
-                if (testResult.success) {
-                    this.workingProxies.push(proxy);
-                    this.log(`✅ ${proxy.name}: OK`);
-                } else {
-                    this.log(`❌ ${proxy.name}: ${testResult.error}`);
-                }
-            } catch (error) {
-                this.log(`❌ ${proxy.name}: ${error.message}`);
+    async scrapeCompleteMetaData() {
+        try {
+            this.log('🐟 Scraping con Card Breakdown...');
+            
+            // 1. Obtener arquetipos del meta
+            const metaDecks = await this.scrapeMetaOverview();
+            
+            if (!metaDecks || metaDecks.length === 0) {
+                throw new Error('No se pudieron obtener arquetipos del meta');
             }
+
+            this.log(`📋 Encontrados ${metaDecks.length} arquetipos, extrayendo breakdowns...`);
+
+            // 2. Extraer card breakdown de cada arquetipo
+            const completeDecks = await this.scrapeAllDeckBreakdowns(metaDecks);
+
+            const finalData = {
+                lastUpdated: new Date().toISOString(),
+                format: 'standard',
+                source: 'MTGGoldfish-CardBreakdown',
+                deckCount: completeDecks.length,
+                totalRealCards: completeDecks.reduce((sum, deck) => 
+                    sum + (deck.mainboard?.length || 0), 0),
+                decks: completeDecks
+            };
+
+            this.log(`✅ Scraping completo: ${completeDecks.length} mazos con ${finalData.totalRealCards} cartas del breakdown`);
+            return finalData;
+
+        } catch (error) {
+            this.logError('❌ Error en scraping:', error);
+            throw error;
         }
-        
-        if (this.workingProxies.length === 0) {
-            throw new Error('No hay proxies funcionales');
-        }
-        
-        this.log(`📡 ${this.workingProxies.length} proxies funcionando`);
     }
 
     /**
@@ -99,12 +76,12 @@ async scrapeCompleteMetaData() {
     }
 
     /**
-     * 🃏 Scrapear cartas completas de todos los mazos
+     * 🃏 Scrapear card breakdowns de todos los arquetipos
      */
-    async scrapeAllDeckListsWithImages(metaDecks) {
+    async scrapeAllDeckBreakdowns(metaDecks) {
         const completeDecks = [];
         
-        this.log(`🃏 Scrapeando cartas de ${metaDecks.length} mazos...`);
+        this.log(`🃏 Scrapeando breakdowns de ${metaDecks.length} arquetipos...`);
         
         for (let i = 0; i < metaDecks.length; i++) {
             const deck = metaDecks[i];
@@ -118,378 +95,423 @@ async scrapeCompleteMetaData() {
                     await this.sleep(this.rateLimitDelay);
                 }
                 
-                const completeDeck = await this.scrapeSingleDeckWithImages(deck);
+                const completeDeck = await this.scrapeSingleDeckWithCards(deck);
                 completeDecks.push(completeDeck);
                 
-                this.log(`✅ ${deck.name}: ${completeDeck.totalCards || 0} cartas extraídas`);
+                this.log(`✅ ${deck.name}: ${completeDeck.totalCards || 0} cartas del breakdown`);
 
             } catch (error) {
                 this.logError(`❌ Error en ${deck.name}:`, error.message);
-                
-                // Añadir mazo básico si falla
-                completeDecks.push({
-                    ...deck,
-                    mainboard: [],
-                    sideboard: [],
-                    keyCards: [],
-                    totalCards: 0,
-                    deckImage: null,
-                    scrapingError: error.message
-                });
+                throw error; // NO fallback - solo datos reales
             }
         }
         
         return completeDecks;
     }
 
-  async scrapeSingleDeckWithImages(deck) {
-    try {
-        // IR DIRECTO al arquetipo, NO buscar deck específico
-        const deckUrl = this.baseUrl + deck.url;
-        this.log(`🔗 Scrapeando DIRECTO: ${deckUrl}`);
-        
-        const html = await this.fetchWithProxy(deckUrl);
-        const deckList = this.parseArchetypePage(html);
-        
-        return {
-            ...deck,
-            mainboard: deckList.mainboard || [],
-            sideboard: deckList.sideboard || [],
-            totalCards: (deckList.mainboard?.length || 0) + (deckList.sideboard?.length || 0)
-        };
-
-    } catch (error) {
-        this.logError(`Error scrapeando ${deck.name}:`, error);
-        return { ...deck, mainboard: [], sideboard: [] };
-    }
-}
-
-parseArchetypePage(html) {
-    console.log('🔍 DEBUG: Parseando página de mazo...');
-    
-    try {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(html, 'text/html');
-        
-        const deckList = {
-            mainboard: [],
-            sideboard: []
-        };
-        
-    // POR:
-const cardRows = doc.querySelectorAll('tr');
-console.log('🔍 DEBUG: Buscando con selector simple, encontradas:', cardRows.length, 'filas');
-        let currentSection = 'mainboard';
-        
-        cardRows.forEach((row, index) => {
-            const text = row.textContent.trim();
-
-             // ← AÑADIR ESTAS LÍNEAS DE DEBUG:
-    if (index < 10) { // Solo primeras 10 filas para no saturar
-        console.log(`🔍 DEBUG: Fila ${index}:`, text.substring(0, 100));
-        
-        const quantity = this.extractQuantity(row);
-        const cardName = this.extractCardName(row);
-        console.log(`🔍 DEBUG: Fila ${index} -> Cantidad: ${quantity}, Carta: "${cardName}"`);
-    }
-            
-            // Detectar sección Sideboard
-            if (text.toLowerCase().includes('sideboard')) {
-                currentSection = 'sideboard';
-                console.log('🔍 DEBUG: Cambiando a sideboard en fila', index);
-                return;
-            }
-            
-            // Buscar celdas de cantidad y nombre
-            const cells = row.querySelectorAll('td, th');
-            if (cells.length < 2) return;
-            
-            // Intentar extraer cantidad y nombre de diferentes formas
-            const quantity = this.extractQuantity(row);
-            const cardName = this.extractCardName(row);
-            
-            if (quantity > 0 && cardName) {
-                const card = {
-                    quantity: quantity,
-                    name: cardName,
-                    section: currentSection
-                };
-                
-                deckList[currentSection].push(card);
-                console.log(`🔍 DEBUG: [${currentSection}] ${quantity}x ${cardName}`);
-            }
-        });
-        
-        console.log('🔍 DEBUG: Resultado final - Mainboard:', deckList.mainboard.length, 'Sideboard:', deckList.sideboard.length);
-        return deckList;
-        
-    } catch (error) {
-        console.error('❌ Error parseando página:', error);
-        return { mainboard: [], sideboard: [] };
-    }
-}
-
-// Métodos auxiliares
-extractQuantity(row) {
-    const text = row.textContent;
-    // Buscar números al inicio: "4x", "2", etc.
-    const quantityMatch = text.match(/^\s*(\d+)[\sx]*/);
-    return quantityMatch ? parseInt(quantityMatch[1]) : 0;
-}
-
-extractCardName(row) {
-    // Buscar enlaces de cartas con diferentes patrones
-    let cardLink = row.querySelector('a[href*="/price/"]');
-    if (!cardLink) cardLink = row.querySelector('a[href*="/cards/"]');
-    if (!cardLink) cardLink = row.querySelector('a.card-link');
-    
-    if (cardLink) {
-        console.log('🔍 DEBUG: Link encontrado:', cardLink.textContent.trim());
-        return cardLink.textContent.trim();
-    }
-    
-    // Fallback: buscar texto después del número
-    const text = row.textContent.trim();
-    console.log('🔍 DEBUG: Texto completo fila:', text);
-    
-    const nameMatch = text.match(/^\s*\d+[\sx]*(.+?)(?:\s+\$|\s*$)/);
-    return nameMatch ? nameMatch[1].trim() : null;
-}
-
     /**
-     * 📋 Parsear tabla de cartas
+     * 🎯 Scrapear mazo usando Card Breakdown - ENFOQUE CORRECTO
      */
-    parseCardTable(table) {
-        const cards = [];
-        const rows = table.querySelectorAll('tr');
-        
-        for (const row of rows) {
-            const card = this.parseCardRow(row);
-            if (card) {
-                cards.push(card);
-            }
-        }
-        
-        return cards;
-    }
-
-    /**
-     * 🃏 Parsear fila de carta individual
-     */
-    parseCardRow(row) {
+    async scrapeSingleDeckWithCards(deck) {
         try {
-            const cells = row.querySelectorAll('td, th');
+            // PASO 1: Ir SOLO a página del arquetipo (ej: /archetype/standard-izzet-cauldron-woe#paper)
+            const archetypeUrl = this.baseUrl + deck.url;
+            this.log(`📋 Scrapeando arquetipo directamente: ${archetypeUrl}`);
             
-            if (cells.length >= 2) {
-                const quantityText = cells[0].textContent.trim();
-                const nameElement = cells[1];
-                
-                // Extraer cantidad
-                const quantity = parseInt(quantityText);
-                if (isNaN(quantity) || quantity <= 0 || quantity > 4) {
-                    return null;
-                }
-                
-                // Extraer nombre (puede estar en un enlace)
-                const nameLink = nameElement.querySelector('a');
-                let cardName = nameLink ? nameLink.textContent : nameElement.textContent;
-                cardName = this.cleanCardName(cardName);
-                
-                if (!cardName || cardName.length < 2) {
-                    return null;
-                }
-                
-                return {
-                    name: cardName,
-                    quantity: quantity,
-                    extractedAt: new Date().toISOString()
-                };
+            const archetypeHtml = await this.fetchWithProxy(archetypeUrl);
+            if (!archetypeHtml) {
+                throw new Error('No se pudo obtener HTML del arquetipo');
             }
             
-            // Fallback: patrón de texto
-            const rowText = row.textContent.trim();
-            const cardPattern = /^(\d+)\s*x?\s+(.+)$/;
-            const match = rowText.match(cardPattern);
+            // PASO 2: Parsear Card Breakdown directamente de la página del arquetipo
+            const deckList = this.parseCardBreakdownFromArchetype(archetypeHtml);
             
-            if (match) {
-                const quantity = parseInt(match[1]);
-                const cardName = this.cleanCardName(match[2]);
-                
-                if (cardName && quantity > 0 && quantity <= 4) {
-                    return {
-                        name: cardName,
-                        quantity: quantity,
-                        extractedAt: new Date().toISOString()
-                    };
-                }
+            if (!deckList.mainboard || deckList.mainboard.length === 0) {
+                throw new Error('No se encontró Card Breakdown en el arquetipo');
             }
             
-            return null;
-
-        } catch (error) {
-            return null;
-        }
-    }
-
-    /**
-     * 🧹 Limpiar nombre de carta
-     */
-    cleanCardName(cardName) {
-        if (!cardName) return '';
-        
-        // Remover precios, sets, números de coleccionista
-        cardName = cardName.replace(/\$\d+\.?\d*/g, '');
-        cardName = cardName.replace(/\([A-Z0-9]+\)/g, '');
-        cardName = cardName.replace(/#\d+/g, '');
-        cardName = cardName.replace(/\s+/g, ' ').trim();
-        
-        // Fix para nombres duplicados como "Izzet Cauldron Izzet Cauldron"
-        const words = cardName.split(' ');
-        const uniqueWords = [];
-        let lastWord = '';
-        
-        for (const word of words) {
-            if (word !== lastWord) {
-                uniqueWords.push(word);
-                lastWord = word;
-            }
-        }
-        
-        return uniqueWords.join(' ');
-    }
-
-    /**
-     * 🖼️ Enriquecer cartas con imágenes
-     */
-    async enrichCardsWithImages(cards) {
-        const enrichedCards = [];
-        
-        // Solo obtener imágenes de las primeras 10 cartas para no sobrecargar
-        const cardsToEnrich = cards.slice(0, 10);
-        
-        for (const card of cardsToEnrich) {
-            const enrichedCard = {
-                ...card,
-                imageUrl: await this.getCardImageUrl(card.name)
+            this.log(`✅ Card Breakdown encontrado: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
+            
+            // PASO 3: Construir mazo completo con datos del breakdown
+            return {
+                ...deck,
+                mainboard: deckList.mainboard,
+                sideboard: deckList.sideboard,
+                keyCards: this.identifyKeyCards(deckList.mainboard),
+                totalCards: deckList.mainboard.length + deckList.sideboard.length,
+                colors: this.inferColorsFromCards(deckList.mainboard),
+                archetype: this.inferArchetypeFromCards(deckList.mainboard),
+                source: 'CardBreakdown',
+                hasRealCards: true
             };
-            enrichedCards.push(enrichedCard);
-            
-            // Pequeño delay entre requests de imágenes
-            await this.sleep(200);
-        }
-        
-        // Añadir el resto sin imágenes
-        const remainingCards = cards.slice(10).map(card => ({
-            ...card,
-            imageUrl: null
-        }));
-        
-        return [...enrichedCards, ...remainingCards];
-    }
 
-    /**
-     * 🖼️ Obtener URL de imagen de carta (con cache)
-     */
-    async getCardImageUrl(cardName) {
-        try {
-            // Verificar cache primero
-            if (this.imageCache[cardName]) {
-                return this.imageCache[cardName];
-            }
-            
-            // Obtener desde Scryfall API
-            const response = await fetch(this.scryfallSearchUrl + encodeURIComponent(cardName));
-            
-            if (response.ok) {
-                const cardData = await response.json();
-                const imageUrl = cardData.image_uris?.normal || cardData.image_uris?.large;
-                
-                if (imageUrl) {
-                    this.imageCache[cardName] = imageUrl;
-                    return imageUrl;
-                }
-            }
-            
-            // Fallback: imagen placeholder
-            const placeholderUrl = `https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(cardName)}`;
-            this.imageCache[cardName] = placeholderUrl;
-            return placeholderUrl;
-            
         } catch (error) {
-            this.log(`⚠️ Error obteniendo imagen para ${cardName}: ${error.message}`);
-            const placeholderUrl = `https://via.placeholder.com/200x280/333333/ffffff?text=${encodeURIComponent(cardName)}`;
-            this.imageCache[cardName] = placeholderUrl;
-            return placeholderUrl;
+            this.logError(`❌ Error en ${deck.name}:`, error.message);
+            throw error;
         }
     }
 
     /**
-     * 🖼️ Extraer imagen del mazo desde MTGGoldfish
+     * 📊 Parsear Card Breakdown desde página del arquetipo
      */
-    extractDeckImage(html, deckUrl) {
+    parseCardBreakdownFromArchetype(html) {
+        this.log('🔍 Parseando Card Breakdown desde página del arquetipo...');
+        
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
             
-            // Buscar imagen del arquetipo
-            const metaImages = doc.querySelectorAll('img[src*="archetype"], img[src*="deck"], img[alt*="archetype"]');
+            const deckList = {
+                mainboard: [],
+                sideboard: []
+            };
             
-            for (const img of metaImages) {
-                const src = img.getAttribute('src');
-                if (src && src.includes('http')) {
-                    return src;
-                } else if (src) {
-                    return this.baseUrl + src;
+            // Buscar la sección "Card Breakdown"
+            const breakdownSection = this.findCardBreakdownSection(doc);
+            
+            if (breakdownSection) {
+                this.log('✅ Sección Card Breakdown encontrada');
+                
+                // Parsear cada categoría del breakdown
+                const categories = this.parseBreakdownCategories(breakdownSection);
+                
+                // Procesar categorías principales (mainboard)
+                const mainboardCategories = ['Creatures', 'Spells', 'Artifacts', 'Enchantments', 'Lands', 'Planeswalkers'];
+                
+                for (const category of mainboardCategories) {
+                    if (categories[category]) {
+                        const categoryCards = this.parseCardsFromCategory(categories[category]);
+                        deckList.mainboard.push(...categoryCards);
+                        this.log(`📋 ${category}: ${categoryCards.length} cartas`);
+                    }
                 }
+                
+                // Procesar sideboard
+                if (categories['Sideboard']) {
+                    const sideboardCards = this.parseCardsFromCategory(categories['Sideboard']);
+                    deckList.sideboard.push(...sideboardCards);
+                    this.log(`📋 Sideboard: ${sideboardCards.length} cartas`);
+                }
+                
+            } else {
+                this.log('❌ No se encontró sección Card Breakdown, intentando parsing de texto...');
+                
+                // Fallback: buscar por texto del breakdown
+                const textBreakdown = this.parseBreakdownFromText(html);
+                deckList.mainboard.push(...textBreakdown.mainboard);
+                deckList.sideboard.push(...textBreakdown.sideboard);
             }
             
-            // Fallback: imagen de MTGGoldfish genérica
-            return `https://www.mtggoldfish.com/images/logos/mtggoldfish.png`;
+            this.log(`📊 Breakdown parseado: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
+            return deckList;
             
         } catch (error) {
-            this.log(`⚠️ Error extrayendo imagen del mazo: ${error.message}`);
-            return null;
+            this.logError('Error parseando Card Breakdown:', error);
+            return { mainboard: [], sideboard: [] };
         }
     }
 
     /**
-     * 🎨 Inferir colores desde cartas
+     * 🔍 Encontrar sección Card Breakdown
      */
-    inferColorsFromCards(cards) {
-        const colors = new Set();
+    findCardBreakdownSection(doc) {
+        // Buscar texto "Card Breakdown" o "Below are the most popular cards"
+        const searchTexts = [
+            'Card Breakdown',
+            'Below are the most popular cards',
+            'Most popular cards',
+            'Creatures',
+            'Spells'
+        ];
         
-        for (const card of cards) {
-            const name = card.name.toLowerCase();
+        for (const searchText of searchTexts) {
+            const xpath = `//*[contains(text(), "${searchText}")]`;
+            const result = doc.evaluate(xpath, doc, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null);
             
-            // Tierras básicas
-            if (name.includes('mountain')) colors.add('R');
-            if (name.includes('island')) colors.add('U');
-            if (name.includes('swamp')) colors.add('B');
-            if (name.includes('forest')) colors.add('G');
-            if (name.includes('plains')) colors.add('W');
-            
-            // Patrones comunes de nombres
-            if (name.includes('red') || name.includes('fire') || name.includes('burn')) colors.add('R');
-            if (name.includes('blue') || name.includes('counter') || name.includes('draw')) colors.add('U');
-            if (name.includes('black') || name.includes('death') || name.includes('destroy')) colors.add('B');
-            if (name.includes('green') || name.includes('growth') || name.includes('elf')) colors.add('G');
-            if (name.includes('white') || name.includes('angel') || name.includes('heal')) colors.add('W');
+            if (result.singleNodeValue) {
+                this.log(`✅ Breakdown encontrado con texto: "${searchText}"`);
+                
+                // Buscar el contenedor padre que tiene todo el breakdown
+                let container = result.singleNodeValue;
+                for (let i = 0; i < 5; i++) {
+                    container = container.parentElement;
+                    if (container && container.textContent.length > 500) {
+                        return container;
+                    }
+                }
+                
+                return result.singleNodeValue.parentElement;
+            }
         }
         
-        return Array.from(colors);
+        this.log('❌ No se encontró sección Card Breakdown');
+        return null;
     }
 
-    // Métodos auxiliares (extractArchetypeUrls, fetchWithProxy, etc.) permanecen igual...
+    /**
+     * 📋 Parsear categorías del breakdown
+     */
+    parseBreakdownCategories(breakdownSection) {
+        const categories = {};
+        
+        // Buscar encabezados de categorías (Creatures, Spells, etc.)
+        const categoryHeaders = breakdownSection.querySelectorAll('h3, h4, h5, strong, b');
+        
+        for (const header of categoryHeaders) {
+            const headerText = header.textContent.trim();
+            
+            // Identificar categorías conocidas
+            const knownCategories = [
+                'Creatures', 'Spells', 'Artifacts', 'Enchantments', 
+                'Lands', 'Planeswalkers', 'Sideboard'
+            ];
+            
+            const matchedCategory = knownCategories.find(cat => 
+                headerText.toLowerCase().includes(cat.toLowerCase())
+            );
+            
+            if (matchedCategory) {
+                this.log(`📋 Categoría encontrada: ${matchedCategory}`);
+                
+                // Encontrar contenido de la categoría (siguiente elemento o hermanos)
+                let contentElement = header.nextElementSibling;
+                let attempts = 0;
+                
+                while (contentElement && attempts < 5) {
+                    if (contentElement.textContent.trim().length > 10) {
+                        categories[matchedCategory] = contentElement;
+                        break;
+                    }
+                    contentElement = contentElement.nextElementSibling;
+                    attempts++;
+                }
+                
+                // Si no encuentra contenido como hermano, buscar en el padre
+                if (!categories[matchedCategory]) {
+                    const parentContent = header.parentElement;
+                    if (parentContent && parentContent.textContent.length > headerText.length + 20) {
+                        categories[matchedCategory] = parentContent;
+                    }
+                }
+            }
+        }
+        
+        return categories;
+    }
+
+   /**
+ * 🃏 Parsear cartas desde categoría - ARREGLADO para extraer TODAS
+ */
+parseCardsFromCategory(categoryElement) {
+    const cards = [];
+    const text = categoryElement.textContent;
     
+    this.log(`🔍 DEBUG: Parseando categoría con texto de ${text.length} caracteres`);
+    this.log(`🔍 DEBUG: Primeros 200 chars: ${text.substring(0, 200)}`);
+    
+    // Patrón MEJORADO para cartas del breakdown
+    const cardPatterns = [
+        // Patrón principal: "Fear of Missing Out\n4.0 in 100% of decks"
+        /([A-Za-z][A-Za-z\s,''-]+?)\s*[\n\r]+\s*(\d+\.?\d*)\s+in\s+(\d+)%\s+of\s+decks/gm,
+        
+        // Patrón alternativo: "Fear of Missing Out 4.0 in 100% of decks"
+        /([A-Za-z][A-Za-z\s,''-]+?)\s+(\d+\.?\d*)\s+in\s+(\d+)%\s+of\s+decks/gm,
+        
+        // Patrón más flexible: cualquier carta seguida de números
+        /([A-Za-z][A-Za-z\s,''\-]+?)\s*[\n\r]?\s*(\d+\.?\d*)\s+in\s+(\d+)%/gm
+    ];
+    
+    for (const pattern of cardPatterns) {
+        pattern.lastIndex = 0; // Reset regex
+        let match;
+        let foundInThisPattern = 0;
+        
+        while ((match = pattern.exec(text)) !== null && foundInThisPattern < 20) {
+            const cardName = this.cleanCardName(match[1]);
+            const averageCount = parseFloat(match[2]);
+            const deckPercentage = parseInt(match[3]);
+            
+            // Validar que no sea un duplicado
+            const isDuplicate = cards.some(existing => 
+                this.normalizeCardName(existing.name) === this.normalizeCardName(cardName)
+            );
+            
+            if (!isDuplicate && cardName && cardName.length > 2 && averageCount > 0) {
+                const quantity = Math.round(averageCount);
+                
+                if (quantity >= 1 && quantity <= 4) {
+                    cards.push({
+                        name: cardName,
+                        quantity: quantity,
+                        averageCount: averageCount,
+                        deckPercentage: deckPercentage,
+                        extractedAt: new Date().toISOString(),
+                        source: 'breakdown'
+                    });
+                    
+                    foundInThisPattern++;
+                    this.log(`🃏 ${cardName}: ${quantity}x (${averageCount} avg, ${deckPercentage}%)`);
+                }
+            }
+        }
+        
+        this.log(`🔍 Patrón ${cardPatterns.indexOf(pattern) + 1}: ${foundInThisPattern} cartas encontradas`);
+        
+        // Si encontramos cartas con este patrón, usar solo este
+        if (foundInThisPattern > 0) {
+            break;
+        }
+    }
+    
+    return cards;
+}
+
+// TAMBIÉN AÑADIR normalizeCardName si no existe:
+
+normalizeCardName(name) {
+    return name.toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, ' ');
+}
+
+    /**
+ * 📝 Parsear breakdown desde texto - MEJORADO
+ */
+parseBreakdownFromText(html) {
+    const cards = { mainboard: [], sideboard: [] };
+    
+    try {
+        this.log('🔍 Parseando breakdown desde texto completo...');
+        
+        // Dividir por secciones primero
+        const sections = this.splitTextIntoSections(html);
+        
+        for (const [sectionName, sectionText] of Object.entries(sections)) {
+            const isMainboard = ['creatures', 'spells', 'artifacts', 'enchantments', 'lands', 'planeswalkers'].includes(sectionName);
+            const targetArray = isMainboard ? cards.mainboard : cards.sideboard;
+            
+            const sectionCards = this.extractCardsFromSectionText(sectionText);
+            targetArray.push(...sectionCards);
+            
+            this.log(`📋 ${sectionName}: ${sectionCards.length} cartas extraídas`);
+        }
+        
+    } catch (error) {
+        this.logError('Error parsing breakdown from text:', error);
+    }
+    
+    return cards;
+}
+
+// AÑADIR estos métodos auxiliares:
+
+/**
+ * 📂 Dividir texto en secciones
+ */
+splitTextIntoSections(html) {
+    const sections = {};
+    
+    // Buscar secciones por encabezados
+    const sectionPattern = /(Creatures|Spells|Artifacts|Enchantments|Lands|Planeswalkers|Sideboard)(.*?)(?=Creatures|Spells|Artifacts|Enchantments|Lands|Planeswalkers|Sideboard|$)/gis;
+    
+    let match;
+    while ((match = sectionPattern.exec(html)) !== null) {
+        const sectionName = match[1].toLowerCase();
+        const sectionContent = match[2];
+        sections[sectionName] = sectionContent;
+    }
+    
+    return sections;
+}
+
+/**
+ * 🃏 Extraer cartas de texto de sección
+ */
+extractCardsFromSectionText(sectionText) {
+    const cards = [];
+    
+    // Múltiples patrones para mayor flexibilidad
+    const patterns = [
+        /([A-Za-z][A-Za-z\s,''-]+?)\s*[\n\r]+\s*(\d+\.?\d*)\s+in\s+(\d+)%\s+of\s+decks/gm,
+        /([A-Za-z][A-Za-z\s,''-]+?)\s+(\d+\.?\d*)\s+in\s+(\d+)%\s+of\s+decks/gm,
+        /([A-Za-z'][A-Za-z\s,''\-]+?)\s*(\d+\.?\d*)\s+in\s+(\d+)%/gm
+    ];
+    
+    for (const pattern of patterns) {
+        pattern.lastIndex = 0;
+        let match;
+        
+        while ((match = pattern.exec(sectionText)) !== null) {
+            const cardName = this.cleanCardName(match[1]);
+            const averageCount = parseFloat(match[2]);
+            const deckPercentage = parseInt(match[3]);
+            
+            if (cardName && cardName.length > 2 && averageCount > 0) {
+                const quantity = Math.round(averageCount);
+                
+                if (quantity >= 1 && quantity <= 4) {
+                    cards.push({
+                        name: cardName,
+                        quantity: quantity,
+                        averageCount: averageCount,
+                        deckPercentage: deckPercentage,
+                        extractedAt: new Date().toISOString(),
+                        source: 'breakdown-text'
+                    });
+                }
+            }
+        }
+        
+        if (cards.length > 0) break; // Si encontró cartas, no probar más patrones
+    }
+    
+    return cards;
+}
+
+
+    /**
+     * 🌐 Fetch usando proxy CORS
+     */
+    async fetchWithProxy(url) {
+        this.log(`🔗 Fetch directo a: ${url}`);
+        
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+            
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: this.getOptimalHeaders(),
+                signal: controller.signal,
+                mode: 'cors'
+            });
+
+            clearTimeout(timeoutId);
+
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status} - ${response.statusText}`);
+            }
+
+            const html = await response.text();
+            
+            if (!html || html.length < 500) {
+                throw new Error('Respuesta muy corta o vacía');
+            }
+
+            this.log(`✅ Fetch exitoso: ${html.length} caracteres`);
+            return html;
+
+        } catch (error) {
+            this.logError(`❌ Error en fetch directo:`, error);
+            throw error;
+        }
+    }
+
     /**
      * 🔗 Extraer URLs de arquetipos
      */
     extractArchetypeUrls(html) {
-
-         console.log('🔍 DEBUG: Parseando HTML de', html.length, 'caracteres');
-    console.log('🔍 DEBUG: Buscando links...', html.includes('<a') ? 'SÍ' : 'NO');
-  
-    
         try {
             const parser = new DOMParser();
             const doc = parser.parseFromString(html, 'text/html');
@@ -535,107 +557,105 @@ extractCardName(row) {
         }
     }
 
-/**
- * 🌐 Fetch directo (extensión CORS activada)
- */
-async fetchWithProxy(url) {
-    this.log(`🔗 Fetch directo a: ${url}`);
-    
-    try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    /**
+     * 🧹 Limpiar nombre de carta
+     */
+    cleanCardName(cardName) {
+        if (!cardName) return '';
         
-
-        
-        const response = await fetch(url, {
-            method: 'GET',
-            headers: this.getOptimalHeaders(),
-            signal: controller.signal,
-            mode: 'cors'
-        });
-
-        clearTimeout(timeoutId);
-
-        
-
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status} - ${response.statusText}`);
-        }
-
-        const html = await response.text();
-
-
-// ← AÑADIR ESTAS LÍNEAS DE DEBUG:
-console.log('🔍 DEBUG: Primeros 500 chars del HTML:', html.substring(0, 500));
-console.log('🔍 DEBUG: Buscar "Deck" en HTML:', html.includes('Deck') ? 'SÍ' : 'NO');
-console.log('🔍 DEBUG: Buscar "metagame" en HTML:', html.includes('metagame') ? 'SÍ' : 'NO');
-
-        
-        if (!html || html.length < 500) {
-            throw new Error('Respuesta muy corta o vacía');
-        }
-
-        this.log(`✅ Fetch exitoso: ${html.length} caracteres`);
-        return html;
-
-    } catch (error) {
-        this.logError(`❌ Error en fetch directo:`, error);
-        throw error;
-    }
-}
-
-    // Cache de imágenes
-    loadImageCache() {
-        try {
-            const cached = localStorage.getItem('mtg_image_cache');
-            return cached ? JSON.parse(cached) : {};
-        } catch {
-            return {};
-        }
+        return cardName
+            .replace(/\$\d+\.?\d*/g, '')           // Remover precios
+            .replace(/\([A-Z0-9]+\)/g, '')         // Remover códigos de set
+            .replace(/#\d+/g, '')                  // Remover números de coleccionista
+            .replace(/\s+/g, ' ')                  // Normalizar espacios
+            .trim();
     }
 
-    saveImageCache() {
-        try {
-            localStorage.setItem('mtg_image_cache', JSON.stringify(this.imageCache));
-        } catch (error) {
-            this.log('⚠️ Error guardando cache de imágenes');
-        }
+    /**
+     * 🔑 Identificar cartas clave
+     */
+    identifyKeyCards(mainboard) {
+        return mainboard
+            .filter(card => card.quantity >= 3)
+            .map(card => ({
+                name: card.name,
+                quantity: card.quantity,
+                weight: card.quantity * 25,
+                role: 'key',
+                deckPercentage: card.deckPercentage || 0
+            }))
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, 8);
     }
 
-    // Resto de métodos auxiliares...
-    async testSingleProxy(proxy, testUrl) {
-        try {
-            const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 8000);
+    /**
+     * 🎨 Inferir colores desde cartas
+     */
+    inferColorsFromCards(cards) {
+        const colors = new Set();
+        
+        for (const card of cards) {
+            const name = card.name.toLowerCase();
             
-            const proxyUrl = proxy.url + encodeURIComponent(testUrl);
-            const response = await fetch(proxyUrl, {
-                method: proxy.method,
-                headers: this.getOptimalHeaders(),
-                signal: controller.signal
-            });
-
-            clearTimeout(timeoutId);
-
-            if (!response.ok) {
-                return { success: false, error: `HTTP ${response.status}` };
-            }
-
-            let data;
-            if (proxy.parseJSON) {
-                const json = await response.json();
-                data = json.contents || json.data || json.body;
-            } else {
-                data = await response.text();
-            }
-
-            return { success: !!data && data.length > 10 };
-
-        } catch (error) {
-            return { success: false, error: error.message };
+            // Tierras básicas
+            if (name === 'mountain') colors.add('R');
+            if (name === 'island') colors.add('U');
+            if (name === 'swamp') colors.add('B');
+            if (name === 'forest') colors.add('G');
+            if (name === 'plains') colors.add('W');
+            
+            // Patrones en nombres de cartas
+            if (name.includes('lightning') || name.includes('red') || name.includes('fire')) colors.add('R');
+            if (name.includes('counter') || name.includes('blue') || name.includes('draw')) colors.add('U');
+            if (name.includes('destroy') || name.includes('black') || name.includes('death')) colors.add('B');
+            if (name.includes('green') || name.includes('growth') || name.includes('elf')) colors.add('G');
+            if (name.includes('white') || name.includes('angel') || name.includes('heal')) colors.add('W');
         }
+        
+        return Array.from(colors);
     }
 
+    /**
+     * 🏗️ Detectar arquetipo desde cartas
+     */
+    inferArchetypeFromCards(mainboard) {
+        if (!mainboard || mainboard.length === 0) return 'midrange';
+        
+        let aggroScore = 0;
+        let controlScore = 0;
+        let rampScore = 0;
+        
+        for (const card of mainboard) {
+            const name = card.name.toLowerCase();
+            const qty = card.quantity || 1;
+            
+            // Patrones de aggro
+            if (name.includes('bolt') || name.includes('burn') || name.includes('swiftspear') || 
+                name.includes('guide') || name.includes('aggressive')) {
+                aggroScore += qty * 2;
+            }
+            
+            // Patrones de control
+            if (name.includes('counter') || name.includes('verdict') || name.includes('control') ||
+                name.includes('teferi') || name.includes('wrath')) {
+                controlScore += qty * 2;
+            }
+            
+            // Patrones de ramp
+            if (name.includes('ramp') || name.includes('leyline') || name.includes('domain') ||
+                name.includes('atraxa') || name.includes('beanstalk')) {
+                rampScore += qty * 2;
+            }
+        }
+        
+        if (rampScore > Math.max(aggroScore, controlScore)) return 'ramp';
+        if (aggroScore > controlScore + 3) return 'aggro';
+        if (controlScore > aggroScore + 3) return 'control';
+        
+        return 'midrange';
+    }
+
+    // Métodos auxiliares
     getOptimalHeaders() {
         return {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -670,88 +690,6 @@ console.log('🔍 DEBUG: Buscar "metagame" en HTML:', html.includes('metagame') 
         return null;
     }
 
-    getTableContext(table) {
-        let element = table.previousElementSibling;
-        let context = '';
-        let attempts = 0;
-        
-        while (element && attempts < 5) {
-            context += element.textContent.toLowerCase() + ' ';
-            element = element.previousElementSibling;
-            attempts++;
-        }
-        
-        if (table.parentElement) {
-            context += table.parentElement.textContent.toLowerCase();
-        }
-        
-        return context;
-    }
-
-    parseAlternativeCardFormat(doc) {
-        const cards = [];
-        const cardElements = doc.querySelectorAll('.deck-card, .card-entry, .decklist-card, [class*="card"]');
-        
-        for (const element of cardElements) {
-            const card = this.parseCardRow(element);
-            if (card) {
-                cards.push(card);
-            }
-        }
-        
-        return cards;
-    }
-
-    identifyKeyCards(mainboard) {
-        return mainboard
-            .filter(card => card.quantity >= 3)
-            .map(card => ({
-                name: card.name,
-                quantity: card.quantity,
-                weight: card.quantity * 25,
-                role: 'key'
-            }))
-            .sort((a, b) => b.weight - a.weight)
-            .slice(0, 8);
-    }
-
-    inferArchetypeFromCards(cards) {
-        if (!cards || cards.length === 0) return 'midrange';
-        
-        let aggro = 0;
-        let control = 0;
-        
-        for (const card of cards) {
-            const name = card.name.toLowerCase();
-            if (name.includes('bolt') || name.includes('burn') || name.includes('aggressive')) {
-                aggro += card.quantity || 1;
-            }
-            if (name.includes('counter') || name.includes('control') || name.includes('wrath')) {
-                control += card.quantity || 1;
-            }
-        }
-        
-        if (aggro > control + 2) return 'aggro';
-        if (control > aggro + 2) return 'control';
-        return 'midrange';
-    }
-
-    inferStrategy(deckName) {
-        const name = deckName.toLowerCase();
-        if (name.includes('aggro') || name.includes('burn')) return 'Presión agresiva temprana';
-        if (name.includes('control')) return 'Control hasta win conditions';
-        if (name.includes('ramp') || name.includes('domain')) return 'Acelerar maná para amenazas grandes';
-        return 'Estrategia de intercambio eficiente';
-    }
-
-    inferWeakness(deckName) {
-        const name = deckName.toLowerCase();
-        if (name.includes('aggro')) return 'Board wipes y lifegain';
-        if (name.includes('control')) return 'Presión agresiva temprana';
-        if (name.includes('ramp')) return 'Aggro rápido';
-        return 'Estrategias especializadas';
-    }
-
     cleanText(text) {
         if (!text) return '';
         return text.trim().replace(/\s+/g, ' ').replace(/[^\w\s\-'.,]/g, '').trim();
@@ -765,41 +703,32 @@ console.log('🔍 DEBUG: Buscar "metagame" en HTML:', html.includes('metagame') 
         return new Promise(resolve => setTimeout(resolve, ms));
     }
 
+    // Cache de imágenes
+    loadImageCache() {
+        try {
+            const cached = localStorage.getItem('mtg_image_cache');
+            return cached ? JSON.parse(cached) : {};
+        } catch {
+            return {};
+        }
+    }
+
+    saveImageCache() {
+        try {
+            localStorage.setItem('mtg_image_cache', JSON.stringify(this.imageCache));
+        } catch (error) {
+            this.log('⚠️ Error guardando cache de imágenes');
+        }
+    }
+
     log(message, data = null) {
         if (!this.debugMode) return;
-        console.log(`🐟 [CompleteScraper] ${message}`, data || '');
+        console.log(`🐟 [BreakdownScraper] ${message}`, data || '');
     }
 
     logError(message, error = null) {
-        console.error(`❌ [CompleteScraper] ${message}`, error || '');
+        console.error(`❌ [BreakdownScraper] ${message}`, error || '');
     }
-
-    /**
- * 🔍 Buscar URL de deck específico dentro del arquetipo
- */
-findSpecificDeckUrl(html) {
-    const parser = new DOMParser();
-    const doc = parser.parseFromString(html, 'text/html');
-    
-    // Buscar primer enlace a deck específico
-    const deckLink = doc.querySelector('a[href*="/deck/"]');
-    if (deckLink) {
-        const href = deckLink.getAttribute('href');
-        this.log(`🔍 DEBUG: Encontrado deck específico: ${href}`);
-        return this.baseUrl + href;
-    }
-    
-    // Fallback: buscar otros patrones
-    const tournamentLink = doc.querySelector('a[href*="/tournament/"]');
-    if (tournamentLink) {
-        const href = tournamentLink.getAttribute('href');
-        this.log(`🔍 DEBUG: Encontrado torneo: ${href}`);
-        return this.baseUrl + href;
-    }
-    
-    this.log(`🔍 DEBUG: No se encontró deck específico`);
-    return null;
-}
 }
 
 export default MTGGoldfishCompleteScraper;
