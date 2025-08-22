@@ -68,16 +68,33 @@ async forceUpdateFromUI() {
     return await this.updateData();
 }
 
+// En DatabaseManager.js, añadir:
+
 clearCache() {
     try {
         localStorage.removeItem(this.cacheKeys.metaData);
         localStorage.removeItem(this.cacheKeys.lastUpdate);
         localStorage.removeItem(this.cacheKeys.updateStatus);
+        
+        // Resetear datos actuales
         this.currentMetaData = null;
+        
         this.log('🗑️ Cache limpiado completamente');
+        return true;
     } catch (error) {
         this.logError('Error limpiando cache:', error);
+        return false;
     }
+}
+
+async resetAndUpdate() {
+    this.log('🔄 Reset completo de base de datos...');
+    
+    // Limpiar todo
+    this.clearCache();
+    
+    // Forzar nueva actualización
+    return await this.updateData();
 }
 
     /**

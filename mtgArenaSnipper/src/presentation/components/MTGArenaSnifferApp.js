@@ -198,56 +198,133 @@ class MTGArenaSnifferApp {
     /**
      * 📡 Configurar event listeners globales
      */
- setupEventListeners() {
-    this.log('📡 Configurando event listeners...');
-
+setupEventListeners() {
     // Eventos de predicción
-    this.eventBus.on(GAME_EVENTS.DECK_PREDICTION_UPDATED, (data) => {
+    this.eventBus.on('deck:prediction:updated', (data) => {
         this.handlePredictionUpdated(data);
     });
 
-    this.eventBus.on(GAME_EVENTS.DECK_CONFIRMED, (data) => {
+    this.eventBus.on('deck:confirmed', (data) => {
         this.handleDeckConfirmed(data);
     });
 
-    // ✅ CORREGIR: Un solo listener para view-change-requested
+    // Eventos de UI
     this.eventBus.on('ui:view-change-requested', (data) => {
-        if (data.view === 'deck-detail' && data.deckId) {
-            this.showDeckDetail(data.deckId);
-        } else {
-            this.changeView(data.view);
-        }
+        this.handleViewChangeRequested(data);
     });
 
-    // ✅ AÑADIR: Eventos específicos de navegador de mazos
-    this.eventBus.on('ui:show-deck-detail', (data) => {
-        this.showDeckDetail(data.deckId);
-    });
-
-    this.eventBus.on('ui:test-deck', (data) => {
-        this.handleTestDeck(data);
-    });
-
-    this.eventBus.on('ui:card-added', (data) => {
+    this.eventBus.on('card:added', (data) => {
         this.handleCardAdded(data);
     });
 
+    // AGREGAR: Eventos de base de datos desde Debug
+    this.eventBus.on('database:force-update', async () => {
+        this.log('🔄 Evento database:force-update recibido');
+        await this.forceUpdateDatabase();
+    });
+
+    this.eventBus.on('database:clear-cache', async () => {
+        this.log('🗑️ Evento database:clear-cache recibido');
+        await this.clearDatabaseCache();
+    });
+
+    this.eventBus.on('database:reset', async () => {
+        this.log('🔄 Evento database:reset recibido');
+        await this.resetDatabase();
+    });
+
     // Eventos de sistema
-    this.eventBus.on(GAME_EVENTS.SYSTEM_ERROR, (data) => {
+    this.eventBus.on('system:error', (data) => {
         this.handleSystemError(data);
     });
 
-    // Keyboard shortcuts
+    // Teclado shortcuts
     document.addEventListener('keydown', (e) => {
         this.handleKeyboardShortcuts(e);
     });
 
-    // Window events
-    window.addEventListener('beforeunload', () => {
-        this.cleanup();
-    });
-
     this.log('✅ Event listeners configurados');
+}
+
+// NUEVOS MÉTODOS:
+
+async forceUpdateDatabase() {
+    try {
+        this.log('🔄 Forzando actualización de base de datos...');
+        this.setState({ isLoading: true });
+        
+        // Forzar actualización completa
+        await this.databaseManager.forceUpdate();
+        
+        this.setState({ isLoading: false });
+        
+        // Notificar éxito
+        this.eventBus.emit('database:update:completed', {
+            deckCount: this.databaseManager.currentMetaData?.deckCount || 0,
+            message: 'Actualización forzada completada'
+        });
+        
+        this.log('✅ Actualización forzada completada');
+
+    } catch (error) {
+        this.setState({ isLoading: false });
+        this.logError('❌ Error en actualización forzada:', error);
+        
+        this.eventBus.emit('database:update:failed', {
+            error: error.message
+        });
+    }
+}
+
+async clearDatabaseCache() {
+    try {
+        this.log('🗑️ Limpiando cache de base de datos...');
+        
+        // Limpiar cache en DatabaseManager
+        this.databaseManager.clearCache();
+        
+        this.log('✅ Cache limpiado');
+        
+        // Notificar
+        if (this.uiService?.showNotification) {
+            this.uiService.showNotification({
+                type: 'info',
+                title: '🗑️ Cache limpiado',
+                message: 'Los datos se recargarán en la próxima actualización',
+                duration: 3000
+            });
+        }
+
+    } catch (error) {
+        this.logError('❌ Error limpiando cache:', error);
+    }
+}
+
+async resetDatabase() {
+    try {
+        this.log('🔄 Reseteando base de datos completamente...');
+        this.setState({ isLoading: true });
+        
+        // Limpiar cache
+        this.databaseManager.clearCache();
+        
+        // Forzar nueva actualización
+        await this.databaseManager.forceUpdate();
+        
+        this.setState({ isLoading: false });
+        
+        this.log('✅ Base de datos reseteada');
+        
+        // Notificar
+        this.eventBus.emit('database:update:completed', {
+            deckCount: this.databaseManager.currentMetaData?.deckCount || 0,
+            message: 'Base de datos reseteada y actualizada'
+        });
+
+    } catch (error) {
+        this.setState({ isLoading: false });
+        this.logError('❌ Error reseteando base de datos:', error);
+    }
 }
     /**
      * 🎨 Renderizar interfaz principal

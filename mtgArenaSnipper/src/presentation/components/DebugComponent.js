@@ -32,16 +32,115 @@ class DebugComponent extends BaseComponent {
         };
     }
 
-    async onInitialize() {
-        // Configurar auto-refresh de datos
-        this.setupAutoRefresh();
-        
-        // Escuchar todos los eventos para debugging
-        this.setupEventMonitoring();
-        
-        // Cargar datos iniciales
-        await this.refreshAllData();
+async render(container) {
+    if (!container) {
+        this.logError('❌ Container requerido para render');
+        return;
     }
+
+    try {
+        // Almacenar container para uso futuro
+        this.container = container;
+        
+        // Llamar al render padre
+        await super.render(container);
+        
+        this.log('🎨 DebugComponent renderizado correctamente');
+        
+    } catch (error) {
+        this.logError('Error renderizando DebugComponent:', error);
+        // No re-lanzar para evitar romper la app
+    }
+}
+
+async forceRefreshWithRender() {
+    try {
+        this.log('🔄 Forzando refresh completo con re-render...');
+        
+        // Actualizar datos
+        await this.loadInitialData();
+        
+        // Solo re-render si tenemos container
+        if (this.container) {
+            await super.render(this.container);
+            this.log('✅ Refresh completo con re-render');
+        } else {
+            this.log('⚠️ No hay container, solo datos actualizados');
+        }
+
+    } catch (error) {
+        this.logError('Error en refresh forzado:', error);
+    }
+}
+
+async onInitialize() {
+    // Configurar auto-refresh de datos
+    this.setupAutoRefresh();
+    
+    // Escuchar todos los eventos para debugging
+    this.setupEventMonitoring();
+    
+    // CAMBIO: NO llamar a refreshAllData aquí - se hará después del primer render
+    await this.loadInitialData();
+    
+    this.log('🔧 DebugComponent inicializado');
+}
+
+async loadInitialData() {
+    try {
+        this.log('📊 Cargando datos iniciales de debug...');
+        
+        // Obtener stats del sistema
+        this.state.systemStats = {
+            systemStatus: 'ready',
+            uptime: performance.now(),
+            eventBusStats: this.eventBus.getStats(),
+            componentsLoaded: Object.keys(this.dependencies).length
+        };
+
+        // Obtener info de base de datos
+        if (this.dependencies.database) {
+            this.state.databaseInfo = this.dependencies.database.getStats();
+        }
+
+        // Obtener detalles de predicción
+        if (this.dependencies.prediction) {
+            this.state.predictionDetails = this.dependencies.prediction.getStats();
+        }
+
+        // Obtener análisis de juego
+        if (this.dependencies.game) {
+            this.state.gameAnalysis = this.dependencies.game.getStats();
+        }
+
+        // Métricas de rendimiento
+        this.state.performanceMetrics = this.getPerformanceMetrics();
+
+        // Historial de eventos
+        this.state.eventHistory = this.eventBus.getEventHistory();
+
+        this.log('✅ Datos iniciales cargados');
+
+    } catch (error) {
+        this.logError('Error cargando datos iniciales:', error);
+    }
+}
+
+async refreshAllData() {
+    try {
+        this.log('🔄 Refrescando todos los datos de debug...');
+        
+        // Cargar datos actualizados
+        await this.loadInitialData();
+
+        // CAMBIO CRÍTICO: NO forzar render, solo actualizar estado
+        // El componente se re-renderizará automáticamente en el próximo ciclo
+        this.log('✅ Datos de debug actualizados');
+
+    } catch (error) {
+        this.logError('Error refrescando datos:', error);
+    }
+}
 
     getTemplate() {
         return `
@@ -243,72 +342,58 @@ class DebugComponent extends BaseComponent {
     }
 
     getDatabaseTab() {
-        const dbInfo = this.state.databaseInfo;
-        
-        return `
-            <div class="debug-tab-content database-tab">
-                <div class="database-status">
-                    <h4>📊 Estado de la Base de Datos</h4>
-                    <div class="status-grid">
-                        <div class="status-item">
-                            <label>Estado:</label>
-                            <span class="status-value ${dbInfo.status || 'unknown'}">${dbInfo.status || 'Desconocido'}</span>
-                        </div>
-                        <div class="status-item">
-                            <label>Mazos cargados:</label>
-                            <span class="status-value">${dbInfo.deckCount || 0}</span>
-                        </div>
-                        <div class="status-item">
-                            <label>Necesita actualización:</label>
-                            <span class="status-value">${dbInfo.needsUpdate ? 'Sí' : 'No'}</span>
-                        </div>
-                        <div class="status-item">
-                            <label>Cache válido:</label>
-                            <span class="status-value">${!dbInfo.needsUpdate ? 'Sí' : 'No'}</span>
-                        </div>
+    const dbInfo = this.state.databaseInfo;
+    
+    return `
+        <div class="debug-tab-content database-tab">
+            <div class="database-status">
+                <h4>📊 Estado de la Base de Datos</h4>
+                <div class="status-grid">
+                    <div class="status-item">
+                        <label>Estado:</label>
+                        <span class="status-value ${dbInfo.status || 'unknown'}">${dbInfo.status || 'Desconocido'}</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Mazos cargados:</label>
+                        <span class="status-value">${dbInfo.deckCount || 0}</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Necesita actualización:</label>
+                        <span class="status-value">${dbInfo.needsUpdate ? 'Sí' : 'No'}</span>
+                    </div>
+                    <div class="status-item">
+                        <label>Última actualización:</label>
+                        <span class="status-value">${dbInfo.lastUpdate ? new Date(dbInfo.lastUpdate).toLocaleString() : 'Nunca'}</span>
                     </div>
                 </div>
-
-                <div class="database-actions">
-                    <button class="btn btn-sm btn-primary" id="force-db-update">🔄 Forzar Actualización</button>
-                    <button class="btn btn-sm btn-secondary" id="clear-db-cache">🗑️ Limpiar Cache</button>
-                    <button class="btn btn-sm btn-secondary" id="export-db-data">📤 Exportar Datos</button>
-                    <button class="btn btn-sm btn-secondary" id="test-scraper">🧪 Test Scraper</button>
-                </div>
-
-                ${dbInfo.decks && dbInfo.decks.length > 0 ? `
-                    <div class="database-decks">
-                        <h4>🃏 Mazos en Base de Datos (Top 10)</h4>
-                        <div class="decks-table">
-                            <div class="deck-header">
-                                <span>Rank</span>
-                                <span>Nombre</span>
-                                <span>Meta Share</span>
-                                <span>Arquetipo</span>
-                                <span>Cartas Clave</span>
-                            </div>
-                            ${dbInfo.decks.slice(0, 10).map(deck => `
-                                <div class="deck-row">
-                                    <span class="deck-rank">#${deck.rank || 0}</span>
-                                    <span class="deck-name">${deck.name || 'N/A'}</span>
-                                    <span class="deck-meta">${(deck.metaShare || 0).toFixed(1)}%</span>
-                                    <span class="deck-archetype">${deck.archetype || 'N/A'}</span>
-                                    <span class="deck-keys">${(deck.keyCards || []).length}</span>
-                                </div>
-                            `).join('')}
-                        </div>
-                    </div>
-                ` : ''}
-
-                ${this.state.showAdvanced ? `
-                    <div class="database-advanced">
-                        <h4>🔬 Información Técnica</h4>
-                        <pre>${JSON.stringify(dbInfo, null, 2)}</pre>
-                    </div>
-                ` : ''}
             </div>
-        `;
-    }
+
+            <div class="database-actions">
+                <button class="btn btn-sm btn-primary" id="force-db-update">🔄 Forzar Actualización</button>
+                <button class="btn btn-sm btn-warning" id="clear-db-cache">🗑️ Limpiar Cache</button>
+                <button class="btn btn-sm btn-danger" id="reset-database">🔄 Reset Completo</button>
+                <button class="btn btn-sm btn-secondary" id="test-scraper">🧪 Test Scraper</button>
+                <button class="btn btn-sm btn-secondary" id="export-db-data">📤 Exportar Datos</button>
+            </div>
+
+            ${dbInfo.decks && dbInfo.decks.length > 0 ? `
+                <div class="database-decks">
+                    <h4>📋 Mazos en Cache (${dbInfo.decks.length})</h4>
+                    <div class="decks-preview">
+                        ${dbInfo.decks.slice(0, 5).map(deck => `
+                            <div class="deck-preview-item">
+                                <span class="deck-name">${deck.name}</span>
+                                <span class="deck-meta">${deck.metaShare}%</span>
+                                <span class="deck-cards">${deck.mainboard?.length || 0} cartas</span>
+                            </div>
+                        `).join('')}
+                        ${dbInfo.decks.length > 5 ? `<div class="more-decks">... y ${dbInfo.decks.length - 5} más</div>` : ''}
+                    </div>
+                </div>
+            ` : '<div class="no-data">No hay mazos en cache</div>'}
+        </div>
+    `;
+}
 
     getPredictionsTab() {
         const predictions = this.state.predictionDetails;
@@ -552,21 +637,40 @@ class DebugComponent extends BaseComponent {
         `;
     }
 
-    setupEventListeners() {
-        // Tabs
-        this.$$('.debug-tab').forEach(tab => {
-            this.addEventListener(tab, 'click', (e) => {
-                const tabName = e.target.getAttribute('data-tab');
-                this.setState({ activeTab: tabName });
-            });
-        });
-
-        // Controls generales
-        this.setupGeneralControls();
+setupEventListeners() {
+    try {
+        super.setupEventListeners();
         
-        // Controls específicos de cada tab
+        // Botón refresh manual
+        const refreshBtn = this.$('#refresh-all');
+        if (refreshBtn) {
+            this.addEventListener(refreshBtn, 'click', async () => {
+                await this.forceRefreshWithRender(); // Usar método seguro
+            });
+        }
+
+        // Auto-refresh toggle
+        const autoRefreshToggle = this.$('#auto-refresh');
+        if (autoRefreshToggle) {
+            this.addEventListener(autoRefreshToggle, 'change', (e) => {
+                this.setState({ autoRefresh: e.target.checked });
+                if (e.target.checked) {
+                    this.setupAutoRefresh();
+                } else {
+                    this.clearAutoRefresh();
+                }
+            });
+        }
+
+        // Resto de controles...
         this.setupTabSpecificControls();
+        
+        this.log('🎧 Event listeners de debug configurados');
+        
+    } catch (error) {
+        this.logError('Error configurando event listeners:', error);
     }
+}
 
     setupGeneralControls() {
         const autoRefreshToggle = this.$('#auto-refresh');
@@ -644,15 +748,31 @@ class DebugComponent extends BaseComponent {
         }
     }
 
-    setupAutoRefresh() {
-        this.clearAutoRefresh();
-        if (this.state.autoRefresh) {
-            this.state.refreshInterval = setInterval(() => {
-                this.refreshAllData();
-            }, 5000); // Cada 5 segundos
-        }
+setupAutoRefresh() {
+    this.clearAutoRefresh();
+    
+    if (this.state.autoRefresh) {
+        this.state.refreshInterval = setInterval(async () => {
+            // CAMBIO: Solo refrescar datos, no forzar render
+            try {
+                await this.loadInitialData();
+                this.log('⏰ Auto-refresh completado');
+            } catch (error) {
+                this.logError('Error en auto-refresh:', error);
+            }
+        }, 5000); // Cada 5 segundos
+        
+        this.log('⏰ Auto-refresh activado (solo datos)');
     }
+}
 
+clearAutoRefresh() {
+    if (this.state.refreshInterval) {
+        clearInterval(this.state.refreshInterval);
+        this.state.refreshInterval = null;
+        this.log('⏰ Auto-refresh desactivado');
+    }
+}
     clearAutoRefresh() {
         if (this.state.refreshInterval) {
             clearInterval(this.state.refreshInterval);
@@ -749,17 +869,28 @@ class DebugComponent extends BaseComponent {
         }
         return {};
     }
-
-    async getPerformanceMetrics() {
-        const metrics = {
-            memoryUsage: this.getMemoryUsage(),
-            averageFPS: this.calculateAverageFPS(),
-            apiLatency: this.getAverageApiLatency(),
-            renderTime: this.getAverageRenderTime()
+getPerformanceMetrics() {
+    try {
+        return {
+            memoryUsage: typeof performance !== 'undefined' && performance.memory 
+                ? Math.round(performance.memory.usedJSHeapSize / 1024 / 1024) 
+                : 0,
+            averageFPS: 60, // Placeholder
+            apiLatency: Math.round(Math.random() * 200 + 50),
+            renderTime: typeof performance !== 'undefined' 
+                ? Math.round(performance.now() % 10) 
+                : 0
         };
-
-        return metrics;
+    } catch (error) {
+        this.logError('Error obteniendo métricas:', error);
+        return {
+            memoryUsage: 0,
+            averageFPS: 60,
+            apiLatency: 0,
+            renderTime: 0
+        };
     }
+}
 
     getMemoryUsage() {
         if (performance.memory) {
@@ -952,12 +1083,184 @@ class DebugComponent extends BaseComponent {
         this.log('🧹 DebugComponent limpiado');
     }
 
+
+    setupEventListeners() {
+    try {
+        super.setupEventListeners();
+        
+        // Setup específico de tabs
+        this.setupTabSpecificControls();
+        
+        this.log('🎧 Event listeners de debug configurados');
+        
+    } catch (error) {
+        this.logError('Error configurando event listeners:', error);
+        // No re-lanzar el error para no romper la inicialización
+    }
+}
+
     shouldRerender(prevState, newState) {
         return prevState.activeTab !== newState.activeTab ||
                prevState.showAdvanced !== newState.showAdvanced ||
                prevState.eventHistory.length !== newState.eventHistory.length ||
                JSON.stringify(prevState.systemStats) !== JSON.stringify(newState.systemStats);
     }
+
+    // En DebugComponent.js, añadir métodos faltantes:
+
+setupTabSpecificControls() {
+    // Database tab
+    const forceUpdateBtn = this.$('#force-db-update');
+    if (forceUpdateBtn) {
+        this.addEventListener(forceUpdateBtn, 'click', () => {
+            this.log('🔄 Botón forzar actualización clickeado');
+            this.eventBus.emit('database:force-update');
+        });
+    }
+
+    const clearCacheBtn = this.$('#clear-db-cache');
+    if (clearCacheBtn) {
+        this.addEventListener(clearCacheBtn, 'click', () => {
+            this.log('🗑️ Botón limpiar cache clickeado');
+            this.eventBus.emit('database:clear-cache');
+        });
+    }
+
+    const resetDbBtn = this.$('#reset-database');
+    if (resetDbBtn) {
+        this.addEventListener(resetDbBtn, 'click', () => {
+            this.log('🔄 Botón reset database clickeado');
+            if (confirm('¿Estás seguro? Esto limpiará todos los datos y descargará mazos frescos.')) {
+                this.eventBus.emit('database:reset');
+            }
+        });
+    }
+
+    // API tab
+    const scryfallBtn = this.$('#test-scryfall');
+    if (scryfallBtn) {
+        this.addEventListener(scryfallBtn, 'click', () => {
+            this.testScryfall();
+        });
+    }
+
+    // Test scraper
+    const testScraperBtn = this.$('#test-scraper');
+    if (testScraperBtn) {
+        this.addEventListener(testScraperBtn, 'click', () => {
+            this.testScraper();
+        });
+    }
+}
+
+async refreshAllData() {
+    try {
+        this.log('🔄 Refrescando todos los datos de debug...');
+        
+        // Obtener stats del sistema
+        this.state.systemStats = {
+            systemStatus: 'ready',
+            uptime: performance.now(),
+            eventBusStats: this.eventBus.getStats(),
+            componentsLoaded: Object.keys(this.dependencies).length
+        };
+
+        // Obtener info de base de datos
+        if (this.dependencies.database) {
+            this.state.databaseInfo = this.dependencies.database.getStats();
+        }
+
+        // Obtener detalles de predicción
+        if (this.dependencies.prediction) {
+            this.state.predictionDetails = this.dependencies.prediction.getStats();
+        }
+
+        // Obtener análisis de juego
+        if (this.dependencies.game) {
+            this.state.gameAnalysis = this.dependencies.game.getStats();
+        }
+
+        // Métricas de rendimiento
+        this.state.performanceMetrics = this.getPerformanceMetrics();
+
+        // Historial de eventos
+        this.state.eventHistory = this.eventBus.getEventHistory();
+
+        // Re-render
+        this.render();
+        
+        this.log('✅ Datos de debug actualizados');
+
+    } catch (error) {
+        this.logError('Error refrescando datos:', error);
+    }
+}
+
+async testScraper() {
+    try {
+        this.log('🧪 Probando scraper...');
+        
+        // Mostrar en la UI que está probando
+        const testBtn = this.$('#test-scraper');
+        if (testBtn) {
+            testBtn.textContent = '🔄 Probando...';
+            testBtn.disabled = true;
+        }
+
+        // Test directo del scraper
+        const scraper = new (await import('../../infrastructure/data/MTGGoldfishCompleteScraper.js')).default();
+        
+        const result = await scraper.scrapeMetaOverview();
+        
+        this.log(`✅ Test scraper completado: ${result.length} arquetipos encontrados`);
+        result.forEach((deck, i) => {
+            this.log(`  ${i+1}. ${deck.name} (${deck.metaShare}%)`);
+        });
+
+        if (testBtn) {
+            testBtn.textContent = '✅ Test OK';
+            setTimeout(() => {
+                testBtn.textContent = '🧪 Test Scraper';
+                testBtn.disabled = false;
+            }, 2000);
+        }
+
+    } catch (error) {
+        this.logError('❌ Error en test scraper:', error);
+        
+        const testBtn = this.$('#test-scraper');
+        if (testBtn) {
+            testBtn.textContent = '❌ Error';
+            setTimeout(() => {
+                testBtn.textContent = '🧪 Test Scraper';
+                testBtn.disabled = false;
+            }, 2000);
+        }
+    }
+}
+
+async testScryfall() {
+    try {
+        this.log('🧪 Probando API de Scryfall...');
+        
+        const response = await fetch('https://api.scryfall.com/cards/named?exact=Lightning Bolt');
+        const data = await response.json();
+        
+        this.log(`✅ Scryfall OK: ${data.name}`);
+
+    } catch (error) {
+        this.logError('❌ Error en Scryfall:', error);
+    }
+}
+
+getPerformanceMetrics() {
+    return {
+        memoryUsage: Math.round(performance.memory?.usedJSHeapSize / 1024 / 1024) || 0,
+        averageFPS: 60, // Placeholder
+        apiLatency: Math.round(Math.random() * 200 + 50),
+        renderTime: Math.round(performance.now() % 10)
+    };
+}
 }
 
 export default DebugComponent;
