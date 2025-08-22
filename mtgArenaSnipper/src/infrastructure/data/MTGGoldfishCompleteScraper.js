@@ -63,17 +63,41 @@ class MTGGoldfishCompleteScraper {
         }
     }
 
-    /**
-     * 📊 Scrapear overview del meta
-     */
-    async scrapeMetaOverview() {
-        this.log('📊 Scrapeando página principal del meta...');
-        
-        const html = await this.fetchWithProxy(this.baseUrl + this.metaUrl);
-        const archetyperUrls = this.extractArchetypeUrls(html);
-        
-        return archetyperUrls.slice(0, this.maxDecks);
+async scrapeMetaOverview() {
+    this.log('📊 Scrapeando página principal del meta...');
+    
+    const html = await this.fetchWithProxy(this.baseUrl + this.metaUrl);
+    
+    if (!html) {
+        throw new Error('No se pudo obtener HTML de la página meta');
     }
+    
+    this.log(`📄 HTML obtenido: ${html.length} caracteres`);
+    
+    // DEBUG: Buscar específicamente arquetipos
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+    
+    // Contar diferentes tipos de enlaces
+    const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/standard-"]');
+    const allArchetypeLinks = doc.querySelectorAll('a[href*="/archetype/"]');
+    const cardLinks = doc.querySelectorAll('a[href*="/price/"]');
+    
+    this.log(`🔍 ANÁLISIS DE ENLACES:`);
+    this.log(`  - Enlaces /archetype/standard-: ${archetypeLinks.length}`);
+    this.log(`  - Enlaces /archetype/ (total): ${allArchetypeLinks.length}`);
+    this.log(`  - Enlaces de cartas /price/: ${cardLinks.length}`);
+    
+    // Mostrar primeros arquetipos encontrados
+    this.log(`📋 Primeros arquetipos encontrados:`);
+    Array.from(archetypeLinks).slice(0, 5).forEach((link, i) => {
+        this.log(`  ${i+1}. "${link.textContent.trim()}" → ${link.getAttribute('href')}`);
+    });
+    
+    const archetyperUrls = this.extractArchetypeUrls(html);
+    
+    return archetyperUrls.slice(0, this.maxDecks);
+}
 
     /**
      * 🃏 Scrapear card breakdowns de todos los arquetipos
@@ -512,24 +536,48 @@ extractCardsFromSectionText(sectionText) {
      * 🔗 Extraer URLs de arquetipos
      */
     extractArchetypeUrls(html) {
-        try {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            
-            const archetyperData = [];
-            const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/standard"]');
-            
-            this.log(`🔍 Encontrados ${archetypeLinks.length} enlaces de arquetipos`);
-            
-            for (const link of archetypeLinks) {
+    try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(html, 'text/html');
+        
+        const archetyperData = [];
+        
+        // CORRECCIÓN: Buscar ESPECÍFICAMENTE enlaces de arquetipo
+        const archetypeLinks = doc.querySelectorAll('a[href*="/archetype/standard-"]');
+        
+        this.log(`🔍 Enlaces de arquetipo encontrados: ${archetypeLinks.length}`);
+        
+        const seenNames = new Set();
+        
+        for (const link of archetypeLinks) {
+            try {
                 const href = link.getAttribute('href');
                 const deckName = this.cleanText(link.textContent);
                 
-                if (!deckName || deckName.length < 3 || !href) continue;
+                // VALIDACIÓN CRÍTICA: Solo acepta si la URL es de arquetipo
+                if (!href || !href.includes('/archetype/standard-')) {
+                    this.log(`❌ URL no es arquetipo: ${href}`);
+                    continue;
+                }
                 
+                // VALIDACIÓN: El nombre debe ser un arquetipo, no carta
+                if (!deckName || deckName.length < 5) {
+                    this.log(`❌ Nombre muy corto: ${deckName}`);
+                    continue;
+                }
+                
+                // Evitar duplicados
+                if (seenNames.has(deckName.toLowerCase())) {
+                    this.log(`🔄 Duplicado: ${deckName}`);
+                    continue;
+                }
+                
+                // Buscar porcentaje en el contexto
                 const percentage = this.findPercentageInContext(link);
                 
-                if (percentage && percentage > 0 && percentage <= 50) {
+                if (percentage && percentage > 1 && percentage <= 50) {
+                    seenNames.add(deckName.toLowerCase());
+                    
                     archetyperData.push({
                         id: this.generateDeckId(deckName),
                         name: deckName,
@@ -537,25 +585,177 @@ extractCardsFromSectionText(sectionText) {
                         url: href,
                         extractedAt: new Date().toISOString()
                     });
+                    
+                    this.log(`✅ ARQUETIPO válido: ${deckName} (${percentage}%) - ${href}`);
+                } else {
+                    this.log(`❌ Sin porcentaje válido para: ${deckName} (${percentage}%)`);
                 }
+                
+            } catch (error) {
+                this.logError(`Error procesando enlace:`, error);
+                continue;
             }
+        }
+        
+        // Si no encuentra arquetipos, hay un problema
+        if (archetyperData.length === 0) {
+            this.log('⚠️ NO se encontraron arquetipos válidos');
             
-            const uniqueArchetypes = archetyperData.filter((deck, index, self) => 
-                index === self.findIndex(d => d.url === deck.url)
-            );
-            
-            uniqueArchetypes.sort((a, b) => b.metaShare - a.metaShare);
-            uniqueArchetypes.forEach((deck, index) => {
-                deck.rank = index + 1;
+            // Debug: mostrar todos los enlaces encontrados
+            const allLinks = doc.querySelectorAll('a[href*="archetype"], a[href*="standard"]');
+            this.log(`🔍 Enlaces encontrados en general: ${allLinks.length}`);
+            allLinks.forEach((link, i) => {
+                if (i < 10) { // Solo primeros 10
+                    this.log(`  ${i+1}. ${link.textContent.trim()} → ${link.href}`);
+                }
             });
-            
-            return uniqueArchetypes;
+        }
+        
+        // Ordenar por meta share
+        archetyperData.sort((a, b) => b.metaShare - a.metaShare);
+        
+        // Asignar ranks
+        archetyperData.forEach((deck, index) => {
+            deck.rank = index + 1;
+        });
+        
+        const finalArchetypes = archetyperData.slice(0, this.maxDecks);
+        
+        this.log(`🎯 ARQUETIPOS FINALES: ${finalArchetypes.length}`);
+        finalArchetypes.forEach(deck => {
+            this.log(`  ${deck.rank}. ${deck.name} (${deck.metaShare}%)`);
+        });
+        
+        return finalArchetypes;
 
-        } catch (error) {
-            this.logError('Error extrayendo URLs:', error);
-            return [];
+    } catch (error) {
+        this.logError('Error extrayendo URLs:', error);
+        return [];
+    }
+}
+
+findPercentageInContext(link) {
+    // Buscar porcentaje en múltiples contextos
+    const searchElements = [
+        link.parentElement,
+        link.parentElement?.parentElement,
+        link.parentElement?.parentElement?.parentElement,
+        // Buscar en hermanos
+        link.nextElementSibling,
+        link.previousElementSibling
+    ];
+    
+    for (const element of searchElements) {
+        if (!element) continue;
+        
+        const text = element.textContent || '';
+        
+        // Buscar patrón de porcentaje meta
+        const percentMatch = text.match(/(\d+\.?\d*)\s*%/);
+        if (percentMatch) {
+            const percentage = parseFloat(percentMatch[1]);
+            if (percentage > 1 && percentage <= 50) {
+                this.log(`📊 Porcentaje encontrado: ${percentage}% en ${element.tagName}`);
+                return percentage;
+            }
         }
     }
+    
+    return null;
+}
+
+cleanText(text) {
+    if (!text) return '';
+    
+    return text
+        .trim()
+        .replace(/\s+/g, ' ')
+        .replace(/^\d+\.\s*/, '') // Remover números iniciales
+        .replace(/\$[\d,]+/, ''); // Remover precios
+}
+
+generateDeckId(name) {
+    return name.toLowerCase()
+        .replace(/[^a-z0-9\s]/g, '')
+        .replace(/\s+/g, '-')
+        .substring(0, 30);
+}
+// Métodos auxiliares para eliminar duplicados
+isDuplicateOrInvalid(deckName, existingDecks) {
+    // Verificar nombres similares
+    const normalizedName = deckName.toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    for (const existing of existingDecks) {
+        const existingNormalized = existing.name.toLowerCase().replace(/[^a-z0-9]/g, '');
+        
+        // Si los nombres son muy similares (>80% match)
+        if (this.calculateSimilarity(normalizedName, existingNormalized) > 0.8) {
+            return true;
+        }
+    }
+    
+    // Verificar nombres de cartas conocidas (no son arquetipos)
+    const commonCards = [
+        'lightning bolt', 'counterspell', 'teferi', 'kaito', 'atraxa', 
+        'monastery swiftspear', 'ragavan', 'omnath', 'wrenn'
+    ];
+    
+    return commonCards.some(card => normalizedName.includes(card.replace(/\s/g, '')));
+}
+
+removeDuplicateArchetypes(archetyperData) {
+    const seen = new Set();
+    const unique = [];
+    
+    for (const deck of archetyperData) {
+        const key = `${deck.name.toLowerCase()}-${deck.url}`;
+        
+        if (!seen.has(key)) {
+            seen.add(key);
+            unique.push(deck);
+        }
+    }
+    
+    return unique;
+}
+
+calculateSimilarity(str1, str2) {
+    const longer = str1.length > str2.length ? str1 : str2;
+    const shorter = str1.length > str2.length ? str2 : str1;
+    
+    if (longer.length === 0) return 1.0;
+    
+    const editDistance = this.levenshteinDistance(longer, shorter);
+    return (longer.length - editDistance) / longer.length;
+}
+
+levenshteinDistance(str1, str2) {
+    const matrix = [];
+    
+    for (let i = 0; i <= str2.length; i++) {
+        matrix[i] = [i];
+    }
+    
+    for (let j = 0; j <= str1.length; j++) {
+        matrix[0][j] = j;
+    }
+    
+    for (let i = 1; i <= str2.length; i++) {
+        for (let j = 1; j <= str1.length; j++) {
+            if (str2.charAt(i - 1) === str1.charAt(j - 1)) {
+                matrix[i][j] = matrix[i - 1][j - 1];
+            } else {
+                matrix[i][j] = Math.min(
+                    matrix[i - 1][j - 1] + 1,
+                    matrix[i][j - 1] + 1,
+                    matrix[i - 1][j] + 1
+                );
+            }
+        }
+    }
+    
+    return matrix[str2.length][str1.length];
+}
 
     /**
      * 🧹 Limpiar nombre de carta

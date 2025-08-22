@@ -19,48 +19,153 @@ class MetaBrowserComponent extends BaseComponent {
         };
     }
 
-    async onInitialize() {
-        // Cargar mazos meta iniciales
+   async onInitialize() {
+    try {
+        this.log('🔍 Inicializando MetaBrowserComponent...');
+        
+        // Cargar datos meta desde DatabaseManager
         await this.loadMetaDecks();
         
-        // Escuchar actualizaciones de base de datos
+        // Configurar refresh automático cuando se actualice la BD
         this.eventBus.on('database:updated', async () => {
             await this.loadMetaDecks();
         });
         
-        this.log('🔍 MetaBrowserComponent inicializado');
+        this.log('✅ MetaBrowserComponent inicializado correctamente');
+    } catch (error) {
+        this.logError('❌ Error inicializando MetaBrowserComponent:', error);
+        this.setState({ 
+            error: error.message,
+            isLoading: false,
+            showEmptyMessage: true
+        });
     }
+}
 
-    async loadMetaDecks() {
-        try {
-            this.setState({ isLoading: true });
-            
-            const metaData = await this.dependencies.databaseManager?.getMetaData();
-            
-            if (metaData && metaData.decks) {
-                this.setState({ 
-                    decks: metaData.decks,
-                    isLoading: false,
-                    showEmptyMessage: false
-                });
-                this.log(`📊 Cargados ${metaData.decks.length} mazos meta`);
-            } else {
-                this.setState({ 
-                    decks: [],
-                    isLoading: false,
-                    showEmptyMessage: true
-                });
-                this.log('⚠️ No hay mazos meta disponibles');
-            }
-        } catch (error) {
-            this.logError('Error cargando mazos meta:', error);
-            this.setState({ 
+async loadMetaDecks() {
+    try {
+        this.setState({ isLoading: true, error: null });
+        
+        // Obtener datos del DatabaseManager sin datos hardcodeados
+        const metaData = await this.dependencies.databaseManager?.getMetaData();
+        
+        if (metaData && metaData.decks && metaData.decks.length > 0) {
+            this.setState({
+                decks: metaData.decks,
+                isLoading: false,
+                showEmptyMessage: false
+            });
+            this.log(`✅ Cargados ${metaData.decks.length} mazos meta desde BD`);
+        } else {
+            this.setState({
                 decks: [],
                 isLoading: false,
                 showEmptyMessage: true
             });
+            this.log('⚠️ No hay mazos meta disponibles en la base de datos');
         }
+    } catch (error) {
+        this.logError('❌ Error cargando mazos meta:', error);
+        this.setState({
+            decks: [],
+            isLoading: false,
+            error: 'Error cargando mazos meta',
+            showEmptyMessage: true
+        });
     }
+}
+
+setupEventListeners() {
+    super.setupEventListeners();
+    
+    // Event delegation para clicks en mazos
+    this.container.addEventListener('click', (e) => {
+        e.stopPropagation();
+        
+        // Obtener el deck ID del elemento clickeado o su parent
+        const deckElement = e.target.closest('[data-deck-id]');
+        const deckId = deckElement?.getAttribute('data-deck-id');
+        
+        if (e.target.matches('.view-deck-btn') || e.target.closest('.view-deck-btn')) {
+            e.preventDefault();
+            if (deckId) {
+                this.viewDeckDetail(deckId);
+            }
+            return;
+        }
+        
+        if (e.target.matches('.test-deck-btn') || e.target.closest('.test-deck-btn')) {
+            e.preventDefault();
+            if (deckId) {
+                this.testDeck(deckId);
+            }
+            return;
+        }
+        
+        // Click en la carta del mazo (no en botones)
+        if (deckElement && !e.target.closest('button')) {
+            this.viewDeckDetail(deckId);
+        }
+    });
+    
+    // Filtros y búsqueda
+    this.container.addEventListener('input', (e) => {
+        if (e.target.matches('#search-decks')) {
+            clearTimeout(this.searchTimeout);
+            this.searchTimeout = setTimeout(() => {
+                this.setState({ searchQuery: e.target.value });
+            }, 300);
+        }
+    });
+    
+    this.container.addEventListener('change', (e) => {
+        if (e.target.matches('#filter-archetype')) {
+            this.setState({ filterArchetype: e.target.value });
+        }
+        if (e.target.matches('#sort-by')) {
+            this.setState({ sortBy: e.target.value });
+        }
+    });
+    
+    // Cambio de vista
+    this.container.addEventListener('click', (e) => {
+        if (e.target.matches('#view-grid')) {
+            e.preventDefault();
+            this.setState({ viewMode: 'grid' });
+        }
+        if (e.target.matches('#view-table')) {
+            e.preventDefault();
+            this.setState({ viewMode: 'table' });
+        }
+        if (e.target.matches('#refresh-meta')) {
+            e.preventDefault();
+            this.loadMetaDecks();
+        }
+        if (e.target.matches('#sort-direction')) {
+            e.preventDefault();
+            this.setState({ 
+                sortDirection: this.state.sortDirection === 'desc' ? 'asc' : 'desc' 
+            });
+        }
+    });
+}
+
+viewDeckDetail(deckId) {
+    if (!deckId) return;
+    
+    this.log(`🔍 Abriendo detalle del mazo: ${deckId}`);
+    this.eventBus.emit('ui:show-deck-detail', { deckId });
+}
+
+testDeck(deckId) {
+    if (!deckId) return;
+    
+    const deck = this.state.decks.find(d => d.id === deckId);
+    if (deck) {
+        this.log(`🧪 Probando mazo: ${deck.name}`);
+        this.eventBus.emit('deck:test-requested', { deck });
+    }
+}
 
     getTemplate() {
         const filteredDecks = this.getFilteredDecks();

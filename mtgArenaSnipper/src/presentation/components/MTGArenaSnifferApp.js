@@ -148,26 +148,21 @@ class MTGArenaSnifferApp {
     /**
      * 🎨 Inicializar capa de presentación
      */
-    async initializePresentation() {
-        this.log('🎨 Inicializando componentes UI...');
-        
-        // Obtener contenedor principal
-        const container = document.getElementById('app');
-        if (!container) {
-            throw new Error('Container #app no encontrado');
-        }
+   async initializePresentation() {
+    this.log('🎨 Inicializando componentes UI...');
+    
+    // Obtener contenedor principal
+    const container = document.getElementById('app');
+    if (!container) {
+        throw new Error('Container #app no encontrado');
+    }
 
-        // Inicializar componentes UI
-        this.components = {
-            header: new HeaderComponent(this.eventBus, this.uiService),
-            cardInput: new CardInputComponent(this.eventBus, this.gameService),
-            predictions: new PredictionsComponent(this.eventBus, this.uiService),
-            confirmedDeck: new ConfirmedDeckComponent(this.eventBus, this.uiService),
-            status: new StatusComponent(this.eventBus, this.databaseManager),
-            debug: new DebugComponent(this.eventBus, {
-                database: this.databaseManager,
-                prediction: this.predictionEngine,
-                game: this.gameService ,
+    // Inicializar componentes UI - CORRECCIÓN COMPLETA
+    this.components = {
+        header: new HeaderComponent(this.eventBus, this.uiService),
+        cardInput: new CardInputComponent(this.eventBus, this.gameService),
+        predictions: new PredictionsComponent(this.eventBus, this.uiService),
+        confirmedDeck: new ConfirmedDeckComponent(this.eventBus, this.uiService),
         metaBrowser: new MetaBrowserComponent(this.eventBus, {
             databaseManager: this.databaseManager,
             uiService: this.uiService
@@ -175,19 +170,30 @@ class MTGArenaSnifferApp {
         deckDetail: new DeckDetailComponent(this.eventBus, {
             databaseManager: this.databaseManager,
             uiService: this.uiService
+        }),
+        status: new StatusComponent(this.eventBus, this.databaseManager),
+        debug: new DebugComponent(this.eventBus, {
+            database: this.databaseManager,
+            prediction: this.predictionEngine,
+            game: this.gameService
         })
-            })
-            
-        };
+    };
 
-        // Inicializar cada componente
-        for (const [name, component] of Object.entries(this.components)) {
-            await component.initialize();
-            this.log(`✅ Componente ${name} inicializado`);
+    // Inicializar todos los componentes
+    const initPromises = Object.entries(this.components).map(async ([name, component]) => {
+        try {
+            if (component.initialize) {
+                await component.initialize();
+                this.log(`✅ Componente ${name} inicializado`);
+            }
+        } catch (error) {
+            this.logError(`❌ Error inicializando componente ${name}:`, error);
         }
+    });
 
-        this.log('✅ Componentes UI inicializados');
-    }
+    await Promise.all(initPromises);
+    this.log('✅ Componentes UI inicializados');
+}
 
     /**
      * 📡 Configurar event listeners globales
@@ -269,7 +275,7 @@ class MTGArenaSnifferApp {
     /**
      * 🏗️ Template principal de la aplicación
      */
-  getMainTemplate() {
+getMainTemplate() {
     return `
         <div class="mtg-sniffer-app ${this.config.theme}">
             <!-- Header -->
@@ -297,12 +303,12 @@ class MTGArenaSnifferApp {
                                  class="view-section ${this.state.currentView === 'confirmed' ? 'active' : 'hidden'}">
                         </section>
 
-                        <!-- ✅ AÑADIR: Meta Browser View -->
+                        <!-- Meta Browser View -->
                         <section id="meta-browser-container" 
                                  class="view-section ${this.state.currentView === 'meta-browser' ? 'active' : 'hidden'}">
                         </section>
 
-                        <!-- ✅ AÑADIR: Deck Detail View -->
+                        <!-- Deck Detail View -->
                         <section id="deck-detail-container" 
                                  class="view-section ${this.state.currentView === 'deck-detail' ? 'active' : 'hidden'}">
                         </section>
@@ -316,41 +322,54 @@ class MTGArenaSnifferApp {
             </main>
 
             <!-- Loading Overlay -->
-            <div id="loading-overlay" class="loading-overlay"></div>
+            <div id="loading-overlay" class="loading-overlay ${this.state.isLoading ? 'visible' : 'hidden'}"></div>
         </div>
     `;
 }
     /**
      * 🎨 Renderizar todos los componentes
      */
-    async renderComponents() {
-        const renderPromises = Object.entries(this.components).map(async ([name, component]) => {
-            try {
-                // Mapear nombres de componentes a IDs de contenedores
-                const containerMap = {
-                    header: 'header-container',
-                    cardInput: 'card-input-container', 
-                    predictions: 'predictions-container',
-                    confirmedDeck: 'confirmed-deck-container',
-                      metaBrowser: 'meta-browser-container',    // ✅ AÑADIR
+  async renderComponents() {
+    this.log('🎨 Renderizando componentes en contenedores...');
+    
+    const renderPromises = Object.entries(this.components).map(async ([name, component]) => {
+        try {
+            // Mapear nombres de componentes a IDs de contenedores
+            const containerMap = {
+                header: 'header-container',
+                cardInput: 'card-input-container', 
+                predictions: 'predictions-container',
+                confirmedDeck: 'confirmed-deck-container',
+                metaBrowser: 'meta-browser-container',    
                 deckDetail: 'deck-detail-container',      
-                    status: 'status-container',
-                    debug: 'debug-container'
-                };
+                status: 'status-container',
+                debug: 'debug-container'
+            };
+            
+            const containerId = containerMap[name];
+            const container = document.getElementById(containerId);
+            
+            if (container && component.render) {
+                await component.render(container);
+                this.log(`✅ Componente ${name} renderizado en ${containerId}`);
                 
-                const containerId = containerMap[name];
-                const container = document.getElementById(containerId);
-                
-                if (container && component.render) {
-                    await component.render(container);
+                // Debug: verificar que el contenido se renderizó
+                if (container.innerHTML.trim() === '') {
+                    this.logError(`⚠️ Contenedor ${containerId} está vacío después del render`);
                 }
-            } catch (error) {
-                this.logError(`Error renderizando componente ${name}:`, error);
+            } else if (!container) {
+                this.logError(`❌ Contenedor ${containerId} no encontrado para componente ${name}`);
+            } else if (!component.render) {
+                this.logError(`❌ Componente ${name} no tiene método render`);
             }
-        });
+        } catch (error) {
+            this.logError(`❌ Error renderizando componente ${name}:`, error);
+        }
+    });
 
-        await Promise.all(renderPromises);
-    }
+    await Promise.all(renderPromises);
+    this.log('✅ Todos los componentes renderizados');
+}
 
     /**
      * 📊 Manejar actualización de predicciones
@@ -424,8 +443,11 @@ class MTGArenaSnifferApp {
     /**
      * 👀 Cambiar vista activa
      */
-   changeView(newView) {
-    if (this.state.currentView === newView) return;
+changeView(newView) {
+    if (this.state.currentView === newView) {
+        this.log(`⚠️ Ya estamos en la vista: ${newView}`);
+        return;
+    }
 
     this.log(`👀 Cambiando vista: ${this.state.currentView} → ${newView}`);
 
@@ -434,14 +456,15 @@ class MTGArenaSnifferApp {
     if (currentContainer) {
         currentContainer.classList.remove('active');
         currentContainer.classList.add('hidden');
+        this.log(`👻 Ocultando vista actual: ${currentContainer.id}`);
     }
 
-    // ✅ CORREGIR: Mapeo correcto de vistas a contenedores
+    // Mapeo de vistas a contenedores
     const containerMap = {
         'prediction': 'predictions-container',
         'confirmed': 'confirmed-deck-container',
-        'meta-browser': 'meta-browser-container',
-        'deck-detail': 'deck-detail-container',
+        'meta-browser': 'meta-browser-container', 
+        'deck-detail': 'deck-detail-container',      
         'debug': 'debug-container'
     };
 
@@ -451,17 +474,33 @@ class MTGArenaSnifferApp {
     if (newContainer) {
         newContainer.classList.remove('hidden');
         newContainer.classList.add('active');
-        this.log(`✅ Vista cambiada a: ${newView} (${containerId})`);
+        
+        // Debug: verificar contenido del contenedor
+        const hasContent = newContainer.innerHTML.trim() !== '';
+        this.log(`✅ Vista cambiada a: ${newView} (${containerId}) - Contenido: ${hasContent ? 'SÍ' : 'NO'}`);
+        
+        if (!hasContent) {
+            this.logError(`⚠️ El contenedor ${containerId} está vacío!`);
+            
+            // Intentar re-renderizar el componente
+            const componentName = Object.keys(containerMap).find(key => containerMap[key] === containerId);
+            if (componentName && this.components[componentName]) {
+                this.log(`🔄 Intentando re-renderizar componente: ${componentName}`);
+                this.components[componentName].render(newContainer);
+            }
+        }
     } else {
         this.logError(`❌ Contenedor no encontrado: ${containerId}`);
+        return;
     }
 
     // Actualizar estado
+    const prevView = this.state.currentView;
     this.setState({ currentView: newView });
 
     // Emitir evento
     this.eventBus.emit('ui:view-changed', { 
-        from: this.state.currentView,
+        from: prevView,
         to: newView 
     });
 }
