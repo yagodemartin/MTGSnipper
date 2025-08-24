@@ -19,7 +19,7 @@ class DatabaseManager {
 
     // Configuración CORREGIDA
     this.config = {
-        maxCacheAge: 2 * 60 * 60 * 1000, // 2 horas (más frecuente)
+        maxCacheAge: 0 * 60 * 60 * 1000, // 2 horas (más frecuente)
         autoUpdate: true, // ← ACTIVADO
         debugMode: true,
         forceUpdateOnStart: true // ← NUEVO: forzar al iniciar
