@@ -50,11 +50,14 @@ class MTGGoldfishCompleteScraper {
                 source: 'MTGGoldfish-ArchetypeTiles',
                 deckCount: completeDecks.length,
                 totalRealCards: completeDecks.reduce((sum, deck) => 
-                    sum + (deck.mainboard?.length || 0), 0),
+                    sum + (deck.totalCardsInDeck || deck.totalCards || 0), 0),
+                totalUniqueCards: completeDecks.reduce((sum, deck) => 
+                    sum + (deck.totalCards || 0), 0),
                 decks: completeDecks
             };
 
-            this.log(`✅ Scraping completo: ${completeDecks.length} arquetipos con ${finalData.totalRealCards} cartas totales`);
+            this.log(`✅ Scraping completo: ${completeDecks.length} arquetipos`);
+            this.log(`📊 Total: ${finalData.totalUniqueCards} cartas únicas, ${finalData.totalRealCards} cartas en mazos`);
             return finalData;
 
         } catch (error) {
@@ -204,7 +207,11 @@ class MTGGoldfishCompleteScraper {
                 const completeDeck = await this.scrapeArchetypeWithCards(archetype);
                 completeDecks.push(completeDeck);
                 
-                this.log(`✅ ${archetype.name}: ${completeDeck.totalCards || 0} cartas del breakdown`);
+                const uniqueCards = completeDeck.totalCards || 0;
+                const totalDeckSize = completeDeck.totalCardsInDeck || 0;
+                const source = completeDeck.hasExactList ? 'Lista exacta' : 'Breakdown';
+                
+                this.log(`✅ ${archetype.name}: ${uniqueCards} cartas únicas (${totalDeckSize} total) - ${source}`);
 
             } catch (error) {
                 this.logError(`❌ Error en ${archetype.name}:`, error.message);
@@ -238,23 +245,57 @@ class MTGGoldfishCompleteScraper {
             // Parsear Card Breakdown desde la página del arquetipo
             const deckList = this.parseCardBreakdownFromArchetype(archetypeHtml);
             
-            if (!deckList.mainboard || deckList.mainboard.length === 0) {
-                throw new Error('No se encontró Card Breakdown válido en el arquetipo');
+            // NUEVO: Parsear lista completa del mazo ejemplo (75 cartas)
+            const completeDeckList = this.parseCompleteDeckList(archetypeHtml);
+            
+            this.log(`🔍 Resultados del parsing:`);
+            this.log(`  📊 Card Breakdown: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
+            this.log(`  🎯 Lista completa: ${completeDeckList.mainboard.length} mainboard, ${completeDeckList.sideboard.length} sideboard`);
+            
+            // PRIORIZAR LISTA COMPLETA - Solo usar breakdown si no hay lista exacta
+            let finalMainboard, finalSideboard, sourceType;
+            
+            if (completeDeckList.mainboard.length >= 20 || completeDeckList.sideboard.length >= 5) {
+                // Usar lista completa si tiene suficientes cartas
+                finalMainboard = completeDeckList.mainboard;
+                finalSideboard = completeDeckList.sideboard;
+                sourceType = 'Lista exacta (75 cartas)';
+                this.log('✅ USANDO LISTA EXACTA - Tiene cartas suficientes');
+            } else if (deckList.mainboard.length > 0) {
+                // Fallback a breakdown si la lista completa falló
+                finalMainboard = deckList.mainboard;
+                finalSideboard = deckList.sideboard;
+                sourceType = 'Card Breakdown (estadísticas)';
+                this.log('⚠️ USANDO BREAKDOWN - Lista exacta insuficiente');
+            } else {
+                throw new Error('No se pudo extraer ni lista exacta ni breakdown');
             }
             
-            this.log(`✅ Card Breakdown: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
+            this.log(`📊 RESULTADO FINAL: ${finalMainboard.length} mainboard, ${finalSideboard.length} sideboard`);
+            this.log(`📋 Fuente: ${sourceType}`);
+            
+            // Debug: mostrar algunas cartas extraídas
+            if (finalMainboard.length > 0) {
+                this.log('🎯 Primeras cartas del mainboard:');
+                finalMainboard.slice(0, 5).forEach((card, i) => {
+                    this.log(`  ${i + 1}. ${card.copies}x ${card.name}${card.price ? ` (${card.price})` : ''}`);
+                });
+            }
             
             // Construir objeto completo del mazo
             return {
                 ...archetype,
-                mainboard: deckList.mainboard,
-                sideboard: deckList.sideboard,
-                keyCards: this.identifyKeyCards(deckList.mainboard),
-                totalCards: deckList.mainboard.length + deckList.sideboard.length,
-                colors: this.inferColorsFromCards(deckList.mainboard),
-                archetype: this.inferArchetypeFromCards(deckList.mainboard),
-                source: 'MTGGoldfish-CardBreakdown',
+                mainboard: finalMainboard,
+                sideboard: finalSideboard,
+                cardBreakdown: deckList, // Mantener breakdown para estadísticas
+                keyCards: this.identifyKeyCards(finalMainboard),
+                totalCards: this.calculateTotalCards(finalMainboard, finalSideboard),
+                totalCardsInDeck: this.calculateActualDeckSize(finalMainboard, finalSideboard), // 75 cartas reales
+                colors: this.inferColorsFromCards(finalMainboard),
+                archetype: this.inferArchetypeFromCards(finalMainboard),
+                source: completeDeckList.mainboard.length >= 20 ? 'MTGGoldfish-CompleteDeck' : 'MTGGoldfish-CardBreakdown',
                 hasRealCards: true,
+                hasExactList: completeDeckList.mainboard.length >= 20,
                 lastUpdated: new Date().toISOString()
             };
 
@@ -308,7 +349,6 @@ class MTGGoldfishCompleteScraper {
                 
             } else {
                 this.log('❌ No se encontró sección Card Breakdown');
-                throw new Error('Card Breakdown no encontrado');
             }
             
             this.log(`📊 Breakdown parseado: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
@@ -316,8 +356,135 @@ class MTGGoldfishCompleteScraper {
             
         } catch (error) {
             this.logError('Error parseando Card Breakdown:', error);
-            throw error;
+            return { mainboard: [], sideboard: [] };
         }
+    }
+
+    /**
+     * 📋 Parsear lista completa del mazo (75 cartas exactas) - CON DEBUG MEJORADO
+     */
+    parseCompleteDeckList(html) {
+        this.log('🎯 Parseando lista completa del mazo (75 cartas)...');
+        
+        try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            
+            const deckList = {
+                mainboard: [],
+                sideboard: []
+            };
+            
+            // DEBUG: Buscar texto específico de deck lists
+            this.log('🔍 DEBUG: Buscando indicadores de deck list...');
+            const hasCreatures = html.includes('Creatures (');
+            const hasSpells = html.includes('Spells (');
+            const hasLands = html.includes('Lands (');
+            const hasSideboard = html.includes('Sideboard (');
+            const hasTotal = html.includes('Cards Total');
+            
+            this.log(`🔍 Indicadores encontrados: Creatures=${hasCreatures}, Spells=${hasSpells}, Lands=${hasLands}, Sideboard=${hasSideboard}, Total=${hasTotal}`);
+            
+            // Buscar la sección del deck list completo
+            const deckListSection = this.findCompleteDeckSection(doc);
+            
+            if (deckListSection) {
+                this.log('✅ Sección de lista completa encontrada');
+                this.log(`📝 Texto de sección: ${deckListSection.textContent.length} caracteres`);
+                
+                // Extraer cartas organizadas por categorías
+                const deckCategories = this.parseCompleteDeckCategories(deckListSection);
+                
+                this.log(`🗂️ Categorías parseadas: ${Object.keys(deckCategories).length}`);
+                Object.keys(deckCategories).forEach(cat => {
+                    this.log(`  📋 ${cat}: disponible`);
+                });
+                
+                // Procesar categorías del mainboard
+                const mainboardCategories = ['Creatures', 'Spells', 'Artifacts', 'Enchantments', 'Lands', 'Planeswalkers'];
+                
+                for (const category of mainboardCategories) {
+                    if (deckCategories[category]) {
+                        this.log(`🎯 Procesando categoría: ${category}`);
+                        const categoryCards = this.parseExactCardsFromCategory(deckCategories[category], category);
+                        deckList.mainboard.push(...categoryCards);
+                        this.log(`🎯 ${category}: ${categoryCards.length} cartas extraídas`);
+                    } else {
+                        this.log(`⚠️ Categoría ${category} no encontrada`);
+                    }
+                }
+                
+                // Procesar sideboard
+                if (deckCategories['Sideboard']) {
+                    this.log(`🎯 Procesando sideboard...`);
+                    const sideboardCards = this.parseExactCardsFromCategory(deckCategories['Sideboard'], 'Sideboard');
+                    deckList.sideboard.push(...sideboardCards);
+                    this.log(`🎯 Sideboard: ${sideboardCards.length} cartas extraídas`);
+                } else {
+                    this.log(`⚠️ Sideboard no encontrado`);
+                }
+                
+            } else {
+                this.log('⚠️ No se encontró sección de lista completa');
+                
+                // DEBUG ADICIONAL: Buscar texto manualmente
+                if (html.includes('Creatures (')) {
+                    this.log('🔍 ENCONTRADO "Creatures (" en HTML - problema en findCompleteDeckSection');
+                    // Intentar parsing directo del HTML completo
+                    const directParsed = this.parseCompleteDeckFromFullHTML(html);
+                    deckList.mainboard.push(...directParsed.mainboard);
+                    deckList.sideboard.push(...directParsed.sideboard);
+                }
+            }
+            
+            this.log(`🎯 Lista completa parseada: ${deckList.mainboard.length} mainboard, ${deckList.sideboard.length} sideboard`);
+            return deckList;
+            
+        } catch (error) {
+            this.logError('Error parseando lista completa del mazo:', error);
+            return { mainboard: [], sideboard: [] };
+        }
+    }
+
+    /**
+     * 📝 Parsing directo desde HTML completo (fallback)
+     */
+    parseCompleteDeckFromFullHTML(html) {
+        this.log('🔍 FALLBACK: Parsing directo desde HTML completo...');
+        
+        const deckList = {
+            mainboard: [],
+            sideboard: []
+        };
+        
+        // Buscar secciones por texto directamente
+        const categories = ['Creatures', 'Spells', 'Artifacts', 'Enchantments', 'Lands', 'Planeswalkers', 'Sideboard'];
+        
+        for (const category of categories) {
+            const categoryPattern = new RegExp(`${category}\\s*\\((\\d+)\\)([\\s\\S]*?)(?=${categories.join('|')}\\s*\\(|$)`, 'i');
+            const match = html.match(categoryPattern);
+            
+            if (match) {
+                const categoryText = match[2];
+                this.log(`🔍 Encontrada categoría ${category} con texto de ${categoryText.length} chars`);
+                
+                // Crear elemento temporal para el parsing
+                const tempDiv = document.createElement('div');
+                tempDiv.textContent = categoryText;
+                
+                const categoryCards = this.parseExactCardsFromCategory(tempDiv, category);
+                
+                if (category === 'Sideboard') {
+                    deckList.sideboard.push(...categoryCards);
+                } else {
+                    deckList.mainboard.push(...categoryCards);
+                }
+                
+                this.log(`🔍 ${category}: ${categoryCards.length} cartas extraídas`);
+            }
+        }
+        
+        return deckList;
     }
 
     /**
@@ -374,28 +541,274 @@ class MTGGoldfishCompleteScraper {
                 
             } catch (xpathError) {
                 this.log(`⚠️ Error con XPath para "${searchText}": ${xpathError.message}`);
-                
-                // Fallback a querySelector
-                const elements = doc.querySelectorAll('h1, h2, h3, h4, div, section');
-                for (const element of elements) {
-                    if (element.textContent && element.textContent.includes(searchText)) {
-                        this.log(`✅ Breakdown encontrado con fallback: "${searchText}"`);
+            }
+        }
+        
+        this.log('❌ No se encontró sección Card Breakdown con ningún método');
+        return null;
+    }
+
+    /**
+     * 🔍 Encontrar sección de lista completa del mazo - MEJORADO
+     */
+    findCompleteDeckSection(doc) {
+        this.log('🔍 Buscando sección de lista completa del mazo...');
+        
+        // ESTRATEGIA 1: Buscar por texto específico de deck lists
+        const deckListTexts = [
+            '75 Cards Total',
+            'Cards Total', 
+            'Creatures (',
+            'Spells (',
+            'Lands ('
+        ];
+        
+        for (const searchText of deckListTexts) {
+            const elements = doc.querySelectorAll('*');
+            for (const element of elements) {
+                if (element.textContent && element.textContent.includes(searchText)) {
+                    this.log(`✅ Lista encontrada por texto: "${searchText}"`);
+                    
+                    // Buscar contenedor padre que tenga toda la lista
+                    let container = element;
+                    for (let i = 0; i < 6; i++) {
+                        if (!container.parentElement) break;
+                        container = container.parentElement;
                         
-                        let container = element;
-                        for (let i = 0; i < 5; i++) {
-                            if (!container.parentElement) break;
-                            container = container.parentElement;
-                            if (container.textContent && container.textContent.length > 1500) {
-                                return container;
-                            }
+                        const text = container.textContent || '';
+                        const hasCategories = this.hasAllDeckCategories(text);
+                        const hasCardQuantities = (text.match(/^\d+\s+[A-Za-z]/gm) || []).length >= 30;
+                        
+                        if (hasCategories && hasCardQuantities) {
+                            this.log(`✅ Contenedor completo encontrado: ${container.tagName}`);
+                            return container;
                         }
-                        return element.parentElement || element;
                     }
                 }
             }
         }
         
-        this.log('❌ No se encontró sección Card Breakdown con ningún método');
+        // ESTRATEGIA 2: Buscar por estructura HTML específica
+        const deckContainers = [
+            '.deck-view-deck-table',
+            '.archetype-deck-list', 
+            '.deck-list',
+            '.deck-container'
+        ];
+        
+        for (const selector of deckContainers) {
+            const element = doc.querySelector(selector);
+            if (element && this.hasAllDeckCategories(element.textContent)) {
+                this.log(`✅ Lista encontrada por selector: ${selector}`);
+                return element;
+            }
+        }
+        
+        // ESTRATEGIA 3: Buscar el contenedor más grande que tenga estructura de deck
+        const allElements = doc.querySelectorAll('div, section, table, main');
+        let bestCandidate = null;
+        let bestScore = 0;
+        
+        for (const element of allElements) {
+            const score = this.calculateDeckListScore(element);
+            if (score > bestScore && score >= 5) {
+                bestScore = score;
+                bestCandidate = element;
+            }
+        }
+        
+        if (bestCandidate) {
+            this.log(`✅ Mejor candidato encontrado con score: ${bestScore}`);
+            return bestCandidate;
+        }
+        
+        this.log('❌ No se encontró sección de lista completa');
+        return null;
+    }
+
+    /**
+     * 🎯 Verificar si tiene todas las categorías de deck
+     */
+    hasAllDeckCategories(text) {
+        if (!text) return false;
+        
+        const text_lower = text.toLowerCase();
+        const requiredCategories = [
+            'creatures (',
+            'spells (',
+            'lands (',
+            'sideboard ('
+        ];
+        
+        const foundCategories = requiredCategories.filter(cat => 
+            text_lower.includes(cat)
+        );
+        
+        return foundCategories.length >= 3; // Al menos 3 categorías principales
+    }
+
+    /**
+     * 🎯 Calcular score de probabilidad de ser deck list
+     */
+    calculateDeckListScore(element) {
+        const text = element.textContent || '';
+        let score = 0;
+        
+        // +2 por cada categoría principal
+        const categories = ['Creatures (', 'Spells (', 'Artifacts (', 'Enchantments (', 'Lands (', 'Sideboard ('];
+        categories.forEach(cat => {
+            if (text.includes(cat)) score += 2;
+        });
+        
+        // +1 por patrones de cartas con cantidad
+        const cardMatches = text.match(/^\d+\s+[A-Za-z][A-Za-z\s,'-]+\s*\$/gm) || [];
+        score += Math.min(cardMatches.length / 10, 3); // Max 3 puntos
+        
+        // +2 si menciona "75 Cards"
+        if (text.includes('75 Cards')) score += 2;
+        
+        // +1 si tiene precios
+        const priceMatches = text.match(/\$\s*\d+\.\d+/g) || [];
+        if (priceMatches.length > 20) score += 1;
+        
+        return score;
+    }
+
+    /**
+     * 🎯 Verificar si una tabla parece ser una lista completa de mazo
+     */
+    looksLikeCompleteDeckTable(table) {
+        const text = table.textContent || '';
+        
+        // Buscar patrones que indican lista completa
+        const completeDeckPatterns = [
+            /\d+\s+[A-Za-z]/,  // "4 Card Name"
+            /Creatures.*\(\d+\)/i, // "Creatures (20)"
+            /Sideboard.*\(\d+\)/i, // "Sideboard (15)"
+            /75.*Cards.*Total/i // "75 Cards Total"
+        ];
+        
+        const matchingPatterns = completeDeckPatterns.filter(pattern => pattern.test(text));
+        
+        return matchingPatterns.length >= 2;
+    }
+
+    /**
+     * 📋 Verificar si contiene patrones de deck completo
+     */
+    containsCompleteDeckPattern(element) {
+        const text = element.textContent || '';
+        
+        // Debe tener múltiples indicadores de deck list
+        const hasQuantities = /\b\d+\s+[A-Za-z]/.test(text); // "4 Lightning Bolt"
+        const hasCategoryTotals = /\(\d+\)/.test(text); // "(20)"
+        const hasMultipleCards = (text.match(/\b\d+\s+[A-Z]/g) || []).length >= 10;
+        
+        return hasQuantities && hasCategoryTotals && hasMultipleCards;
+    }
+
+    /**
+     * 🗂️ Parsear categorías de la lista completa - MEJORADO
+     */
+    parseCompleteDeckCategories(deckListSection) {
+        this.log('🗂️ Parseando categorías de la lista completa...');
+        const categories = {};
+        
+        if (!deckListSection) return categories;
+        
+        const fullText = deckListSection.textContent;
+        this.log(`📝 Texto completo del deck: ${fullText.length} caracteres`);
+        
+        // Categorías universales con patrones dinámicos
+        const categoryPatterns = [
+            { name: 'Creatures', pattern: /Creatures\s*\(\d+\)/i },
+            { name: 'Spells', pattern: /Spells\s*\(\d+\)/i },
+            { name: 'Artifacts', pattern: /Artifacts\s*\(\d+\)/i },
+            { name: 'Enchantments', pattern: /Enchantments\s*\(\d+\)/i },
+            { name: 'Lands', pattern: /Lands\s*\(\d+\)/i },
+            { name: 'Planeswalkers', pattern: /Planeswalkers\s*\(\d+\)/i },
+            { name: 'Sideboard', pattern: /Sideboard\s*\(\d+\)/i }
+        ];
+        
+        for (let i = 0; i < categoryPatterns.length; i++) {
+            const currentCategory = categoryPatterns[i];
+            const nextCategory = categoryPatterns[i + 1];
+            
+            const currentMatch = fullText.match(currentCategory.pattern);
+            if (!currentMatch) continue;
+            
+            const startIndex = currentMatch.index;
+            let endIndex = fullText.length;
+            
+            // Buscar el final de esta sección (inicio de la siguiente)
+            for (let j = i + 1; j < categoryPatterns.length; j++) {
+                const futureCategory = categoryPatterns[j];
+                const futureMatch = fullText.match(futureCategory.pattern);
+                if (futureMatch && futureMatch.index > startIndex) {
+                    endIndex = futureMatch.index;
+                    break;
+                }
+            }
+            
+            // También buscar por "75 Cards Total" como fin
+            const totalMatch = fullText.match(/\d+\s+Cards\s+Total/i);
+            if (totalMatch && totalMatch.index > startIndex && totalMatch.index < endIndex) {
+                endIndex = totalMatch.index;
+            }
+            
+            // Extraer texto de esta categoría
+            const sectionText = fullText.substring(startIndex, endIndex).trim();
+            
+            if (sectionText.length > 20) {
+                // Crear elemento temporal con el texto
+                const tempDiv = document.createElement('div');
+                tempDiv.textContent = sectionText;
+                categories[currentCategory.name] = tempDiv;
+                
+                this.log(`🗂️ ${currentCategory.name}: Sección de ${sectionText.length} caracteres extraída`);
+                this.log(`📋 Preview: ${sectionText.substring(0, 100)}...`);
+            }
+        }
+        
+        this.log(`🗂️ Categorías extraídas: ${Object.keys(categories).join(', ')}`);
+        return categories;
+    }
+
+    /**
+     * 🎯 Buscar contenido de cartas para una categoría específica
+     */
+    findCategoryCardsContent(header, expectedCount) {
+        // Buscar siguiente elemento que contenga las cartas
+        let contentElement = header.nextElementSibling;
+        let attempts = 0;
+        
+        while (contentElement && attempts < 10) {
+            const text = contentElement.textContent || '';
+            const cardMatches = text.match(/^\d+\s+[A-Za-z]/gm) || [];
+            
+            this.log(`🎯 Evaluando contenido: ${cardMatches.length} cartas encontradas vs ${expectedCount} esperadas`);
+            
+            // Si el número de cartas coincide aproximadamente
+            if (cardMatches.length >= Math.floor(expectedCount * 0.8)) {
+                this.log(`✅ Contenido de categoría encontrado: ${cardMatches.length} cartas`);
+                return contentElement;
+            }
+            
+            contentElement = contentElement.nextElementSibling;
+            attempts++;
+        }
+        
+        // Fallback: usar el elemento padre si contiene las cartas
+        if (header.parentElement && header.parentElement.textContent) {
+            const parentText = header.parentElement.textContent;
+            const parentMatches = parentText.match(/^\d+\s+[A-Za-z]/gm) || [];
+            
+            if (parentMatches.length >= expectedCount * 0.5) {
+                this.log(`🔄 Usando elemento padre como contenido`);
+                return header.parentElement;
+            }
+        }
+        
         return null;
     }
 
@@ -409,12 +822,12 @@ class MTGGoldfishCompleteScraper {
         
         // Buscar indicadores estructurales de breakdown (sin nombres específicos)
         const structuralIndicators = [
-            'in % of decks', // Patrón de estadísticas
-            'in 100% of decks', // Patrón común
-            'in 90% of decks', // Otro patrón común
-            'copies', // Indicador de cantidad
-            'average', // Estadística promedio
-            'most popular', // Texto común en breakdowns
+            'in % of decks',
+            'in 100% of decks',
+            'in 90% of decks',
+            'copies',
+            'average',
+            'most popular',
         ];
         
         // Buscar palabras que indican categorías de cartas (genéricas)
@@ -488,13 +901,6 @@ class MTGGoldfishCompleteScraper {
                 }
             }
             
-            // ESTRATEGIA 2: Si no encontramos suficientes categorías, parsear por texto
-            if (Object.keys(categories).length < 3) {
-                this.log('🔄 Pocas categorías encontradas, intentando parsing por texto...');
-                const textCategories = this.parseBreakdownByText(breakdownSection);
-                Object.assign(categories, textCategories);
-            }
-            
             this.log(`📊 Categorías finales encontradas: ${Object.keys(categories).join(', ')}`);
             
         } catch (error) {
@@ -535,53 +941,6 @@ class MTGGoldfishCompleteScraper {
         
         this.log(`⚠️ No se encontró contenido para header`);
         return null;
-    }
-
-    /**
-     * 📝 Parsear breakdown por texto cuando fallan los headers (completamente genérico)
-     */
-    parseBreakdownByText(breakdownSection) {
-        this.log('📝 Parseando breakdown por texto...');
-        const categories = {};
-        
-        if (!breakdownSection.textContent) return categories;
-        
-        const fullText = breakdownSection.textContent;
-        
-        // Categorías universales de MTG (nunca cambian)
-        const universalCategories = [
-            'Creatures', 'Spells', 'Artifacts', 'Enchantments', 
-            'Lands', 'Planeswalkers', 'Sideboard'
-        ];
-        
-        for (let i = 0; i < universalCategories.length; i++) {
-            const category = universalCategories[i];
-            const nextCategory = universalCategories[i + 1];
-            
-            const categoryIndex = fullText.toLowerCase().indexOf(category.toLowerCase());
-            if (categoryIndex === -1) continue;
-            
-            const nextCategoryIndex = nextCategory ? 
-                fullText.toLowerCase().indexOf(nextCategory.toLowerCase(), categoryIndex + 1) : 
-                fullText.length;
-            
-            const sectionText = fullText.substring(
-                categoryIndex, 
-                nextCategoryIndex === -1 ? fullText.length : nextCategoryIndex
-            );
-            
-            // Solo incluir si la sección tiene contenido significativo
-            if (sectionText.length > 50 && this.containsCardPatterns(sectionText)) {
-                // Crear elemento temporal con el texto
-                const tempDiv = document.createElement('div');
-                tempDiv.textContent = sectionText;
-                categories[category] = tempDiv;
-                
-                this.log(`📝 Sección por texto: ${category} (${sectionText.length} chars)`);
-            }
-        }
-        
-        return categories;
     }
 
     /**
@@ -632,21 +991,131 @@ class MTGGoldfishCompleteScraper {
     }
 
     /**
-     * 🔑 Identificar cartas clave (completamente dinámico)
+     * 🃏 Parsear cartas exactas desde categoría - COMPLETAMENTE MEJORADO
+     */
+    parseExactCardsFromCategory(categoryElement, categoryName) {
+        const cards = [];
+        const text = categoryElement.textContent;
+        
+        this.log(`🃏 Parseando cartas exactas de ${categoryName}...`);
+        this.log(`📝 Texto disponible: ${text.length} caracteres`);
+        this.log(`📝 Preview: ${text.substring(0, 200)}...`);
+        
+        // Limpiar texto y dividir en líneas
+        const lines = text
+            .split(/[\n\r]+/)
+            .map(line => line.trim())
+            .filter(line => line.length > 0);
+        
+        this.log(`📝 Líneas encontradas: ${lines.length}`);
+        
+        // Patrones mejorados para diferentes formatos de MTGGoldfish
+        const exactCardPatterns = [
+            // Patrón principal: "4 Lightning Bolt $ 2.50"
+            /^(\d+)\s+([A-Za-z][A-Za-z\s,''\-\.]+?)\s*\$\s*([\d,]+\.?\d+)/,
+            
+            // Patrón sin precio: "4 Lightning Bolt"
+            /^(\d+)\s+([A-Za-z][A-Za-z\s,''\-\.]+?)$/,
+            
+            // Patrón con precio pegado: "4Lightning Bolt$ 2.50"
+            /^(\d+)([A-Za-z][A-Za-z\s,''\-\.]+?)\$\s*([\d,]+\.?\d+)/,
+            
+            // Patrón flexible: detectar número + nombre + opcional precio
+            /^(\d+)\s*([A-Za-z'][A-Za-z\s,''\-\.&]+?)(?:\s*\$\s*([\d,]+\.?\d+))?$/
+        ];
+        
+        for (const line of lines) {
+            // Saltar líneas que son headers o categorías
+            if (/^(Creatures|Spells|Artifacts|Enchantments|Lands|Planeswalkers|Sideboard)\s*\(/i.test(line)) {
+                this.log(`⏭️  Saltando header: ${line}`);
+                continue;
+            }
+            
+            // Saltar líneas de totales
+            if (/Cards\s+Total/i.test(line)) {
+                this.log(`⏭️  Saltando total: ${line}`);
+                continue;
+            }
+            
+            let cardFound = false;
+            
+            for (const pattern of exactCardPatterns) {
+                const match = line.match(pattern);
+                
+                if (match) {
+                    const quantity = parseInt(match[1]);
+                    const rawCardName = match[2];
+                    const priceStr = match[3] || '0';
+                    const price = parseFloat(priceStr.replace(',', '')) || 0;
+                    
+                    // Limpiar nombre de carta
+                    const cardName = this.cleanCardName(rawCardName);
+                    
+                    // Validaciones
+                    if (quantity > 0 && quantity <= 20 && this.isValidCardName(cardName)) {
+                        const card = {
+                            name: cardName,
+                            copies: quantity,
+                            category: categoryName,
+                            price: price,
+                            exact: true // Marca que es cantidad exacta
+                        };
+                        
+                        cards.push(card);
+                        this.log(`  ✅ ${quantity}x ${cardName}${price > 0 ? ` (${price})` : ''}`);
+                        cardFound = true;
+                        break;
+                    } else {
+                        this.log(`  ❌ Carta inválida: qty=${quantity}, name="${cardName}"`);
+                    }
+                }
+            }
+            
+            if (!cardFound && line.length > 3) {
+                this.log(`  ⚠️  Línea no parseada: "${line}"`);
+            }
+        }
+        
+        this.log(`🃏 ${categoryName}: ${cards.length} cartas exactas extraídas`);
+        
+        // Debug: mostrar algunas cartas extraídas
+        cards.slice(0, 3).forEach(card => {
+            this.log(`  📄 ${card.copies}x ${card.name} (${card.price})`);
+        });
+        
+        return cards;
+    }
+
+    /**
+     * 🔑 Identificar cartas clave (adaptado para ambos tipos de datos)
      */
     identifyKeyCards(mainboard) {
         if (!mainboard || mainboard.length === 0) return [];
         
         return mainboard
             .filter(card => {
-                // Solo basado en estadísticas del scraping web
+                // Si es carta exacta del deck completo
+                if (card.exact) {
+                    return card.copies >= 2; // 2+ copias en deck exacto
+                }
+                
+                // Si es del Card Breakdown (estadísticas)
                 const hasHighUsage = card.percentage >= 75; // 75%+ de mazos
                 const hasMultipleCopies = card.copies >= 2;
                 const isFrequentlyUsed = card.weight >= 80;
                 
                 return hasHighUsage || hasMultipleCopies || isFrequentlyUsed;
             })
-            .sort((a, b) => b.weight - a.weight)
+            .sort((a, b) => {
+                // Ordenar por relevancia
+                if (a.exact && b.exact) {
+                    return b.copies - a.copies; // Más copias = más importante
+                } else if (a.exact || b.exact) {
+                    return a.exact ? -1 : 1; // Cartas exactas primero
+                } else {
+                    return (b.weight || 0) - (a.weight || 0); // Por peso estadístico
+                }
+            })
             .slice(0, 8)
             .map(card => card.name);
     }
@@ -672,21 +1141,33 @@ class MTGGoldfishCompleteScraper {
     }
 
     /**
-     * 🏗️ Inferir tipo de arquetipo (completamente genérico)
+     * 🏗️ Inferir tipo de arquetipo (adaptado para ambos tipos de datos)
      */
     inferArchetypeFromCards(mainboard) {
         if (!mainboard || mainboard.length === 0) return 'Mixed';
         
-        // Análisis puramente estadístico sin nombres hardcodeados
+        // Análisis estadístico adaptado para cartas exactas y breakdown
         const totalCards = mainboard.length;
-        const highCopyCards = mainboard.filter(card => card.copies >= 3).length;
-        const singleCopyCards = mainboard.filter(card => card.copies === 1).length;
+        
+        // Para cartas exactas, usar la cantidad real de copias
+        let highCopyCards = 0;
+        let singleCopyCards = 0;
+        
+        for (const card of mainboard) {
+            const copies = card.copies || 1;
+            
+            if (copies >= 3) {
+                highCopyCards++;
+            } else if (copies === 1) {
+                singleCopyCards++;
+            }
+        }
         
         // Clasificar por distribución de cartas
         if (highCopyCards / totalCards > 0.4) {
-            return 'Focused'; // Mazos con muchas copias = focused
+            return 'Focused'; // Mazos con muchas copias múltiples = focused
         } else if (singleCopyCards / totalCards > 0.6) {
-            return 'Toolbox'; // Mazos con singles = toolbox
+            return 'Toolbox'; // Mazos con muchos singles = toolbox
         } else {
             return 'Balanced'; // Distribución balanceada
         }
@@ -756,12 +1237,28 @@ class MTGGoldfishCompleteScraper {
     }
 
     /**
-     * 🏝️ Verificar si es tierra básica (solo nombres universales que nunca cambian)
+     * 🏝️ Verificar si es tierra básica (para incluirlas en colores)
      */
     isBasicLand(cardName) {
         const name = cardName.toLowerCase().trim();
         const basicLands = ['mountain', 'island', 'plains', 'swamp', 'forest'];
         return basicLands.includes(name);
+    }
+
+    /**
+     * 🧮 Calcular total de cartas únicas
+     */
+    calculateTotalCards(mainboard, sideboard) {
+        return (mainboard?.length || 0) + (sideboard?.length || 0);
+    }
+
+    /**
+     * 🧮 Calcular tamaño real del mazo (suma de todas las copias)
+     */
+    calculateActualDeckSize(mainboard, sideboard) {
+        const mainboardSize = (mainboard || []).reduce((sum, card) => sum + (card.copies || 1), 0);
+        const sideboardSize = (sideboard || []).reduce((sum, card) => sum + (card.copies || 1), 0);
+        return mainboardSize + sideboardSize;
     }
 
     /**
