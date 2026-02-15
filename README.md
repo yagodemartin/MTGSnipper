@@ -1,163 +1,152 @@
-# 🔍 MTG Arena Sniffer
+# MTG Arena Sniffer
 
-## 📋 Descripción
+Aplicación inteligente que detecta y predice el mazo del oponente en Magic: The Gathering Arena en tiempo real. Analiza las cartas jugadas por el oponente utilizando datos actualizados del meta para generar predicciones precisas.
 
-**MTG Arena Sniffer** es una aplicación inteligente que detecta y predice el mazo del oponente en Magic: The Gathering Arena en tiempo real. Analiza las cartas jugadas por el oponente y utiliza datos actualizados del meta para generar predicciones precisas sobre qué mazo está usando.
+## Características Principales
 
-## 🎯 Características Principales
+- **Predicción en Tiempo Real**: Analiza cartas jugadas para predecir el mazo del oponente
+- **Base de Datos Actualizada**: Scraping automático de MTGGoldfish para datos del meta actual
+- **Auto-Confirmación**: Confirma automáticamente mazos con 85%+ de certeza
+- **Interfaz Moderna**: UI intuitiva con tema oscuro y animaciones suaves
+- **Debug Avanzado**: Panel completo de debugging y análisis
+- **Cache Inteligente**: Sistema de cache de 24 horas para datos del meta
 
-- **🔮 Predicción en Tiempo Real**: Analiza cartas jugadas para predecir el mazo del oponente
-- **📊 Base de Datos Actualizada**: Scraping automático de MTGGoldfish para datos del meta actual
-- **🎯 Auto-Confirmación**: Confirma automáticamente mazos con 95%+ de certeza
-- **🎨 Interfaz Moderna**: UI intuitiva con tema oscuro y animaciones suaves
-- **🔧 Debug Avanzado**: Panel completo de debugging y análisis
-- **💾 Cache Inteligente**: Sistema de cache de 24 horas para datos del meta
+## Inicio Rápido
 
-## 🏗️ Arquitectura
+### Requisitos
+
+- Navegador moderno con soporte ES6+
+- Conexión a internet para scraping
+- Local storage habilitado
+- MTG Arena instalado (para usar como overlay)
+
+### Instalación
+
+```bash
+# Clonar repositorio
+git clone https://github.com/yagodemartin/MTGSnipper.git
+cd MTGSnipper
+
+# Instalar como aplicación Overwolf
+# 1. Abre Overwolf
+# 2. Ve a Settings > Extensions > Develop an extension
+# 3. Carga el archivo manifest.json del proyecto
+```
+
+### Uso Básico
+
+1. Abre MTG Arena
+2. Inicia MTG Arena Sniffer desde Overwolf
+3. La aplicación monitorea automáticamente el log de MTG Arena
+4. Las predicciones se actualizan en tiempo real mientras juegas
+
+## Documentación
+
+- [Arquitectura y Diseño](./docs/ARCHITECTURE.md) - Estructura técnica detallada
+- [Guía de Instalación](./docs/INSTALLATION.md) - Pasos para configurar el proyecto
+- [Desarrollo y Contribución](./docs/DEVELOPMENT.md) - Cómo contribuir al proyecto
+- [Roadmap](./docs/ROADMAP.md) - Futuras características planificadas
+- [Plan de Implementación](./docs/IMPLEMENTATION_PLAN.md) - Detalles del sistema multi-agente
+
+## Arquitectura
 
 La aplicación sigue **Clean Architecture** con separación clara de responsabilidades:
 
 ```
 ┌─────────────────────────────────────────┐
 │         Presentation Layer              │
-│  • HeaderComponent                      │
-│  • CardInputComponent                   │
-│  • PredictionsComponent                 │
-│  • ConfirmedDeckComponent               │
-│  • DebugComponent                       │
+│  • Overlay UI Components                │
+│  • Card Input Interface                 │
+│  • Predictions Display                  │
+│  • Confirmed Deck Analysis              │
+│  • Debug Panel                          │
 ├─────────────────────────────────────────┤
 │         Application Layer               │
-│  • GameService                         │
-│  • UIService                           │
-│  • CardService                         │
-│  • EventBus                            │
+│  • GameService                          │
+│  • UIService                            │
+│  • CardService                          │
+│  • EventBus (Pub/Sub)                   │
 ├─────────────────────────────────────────┤
 │           Domain Layer                  │
 │  • DeckPredictionEngine                 │
-│  • Business Logic                      │
-│  • Scoring Algorithms                  │
+│  • Scoring Algorithms                   │
+│  • Game State Logic                     │
 ├─────────────────────────────────────────┤
 │        Infrastructure Layer            │
-│  • DatabaseManager                     │
-│  • MTGGoldfishCompleteScraper          │
-│  • Cache Management                    │
+│  • DatabaseManager                      │
+│  • MTGGoldfish Scraper                  │
+│  • Cache Management                     │
+│  • Overwolf Bridge                      │
 └─────────────────────────────────────────┘
 ```
 
-## 📁 Estructura del Proyecto
+## Estructura del Proyecto
 
 ```
-mtgArenaSnipper/
+MTGSnipper/mtgArenaSnipper/
 ├── src/
 │   ├── application/
-│   │   ├── services/
-│   │   │   ├── GameService.js          # Gestión del estado del juego
-│   │   │   ├── UIService.js            # Gestión de la interfaz
-│   │   │   └── CardService.js          # Gestión de cartas
-│   │   └── events/
-│   │       └── EventBus.js             # Sistema de eventos centralizado
+│   │   ├── events/EventBus.js
+│   │   └── services/
 │   ├── infrastructure/
 │   │   └── data/
-│   │       ├── DatabaseManager.js      # Gestión de datos del meta
-│   │       ├── MTGGoldfishCompleteScraper.js  # Scraping de MTGGoldfish
-│   │       └── DeckPredictionEngine.js # Motor de predicción
 │   ├── presentation/
-│   │   └── components/
-│   │       ├── BaseComponent.js        # Componente base
-│   │       ├── HeaderComponent.js      # Header y navegación
-│   │       ├── CardInputComponent.js   # Entrada de cartas
-│   │       ├── PredictionsComponent.js # Vista de predicciones
-│   │       ├── ConfirmedDeckComponent.js # Mazo confirmado
-│   │       ├── StatusComponent.js      # Barra de estado
-│   │       ├── DebugComponent.js       # Panel de debug
-│   │       └── MTGArenaSnifferApp.js   # Aplicación principal
-│   ├── index.html                      # Punto de entrada
-│   ├── test-app.js                     # Aplicación de pruebas
-│   └── manifest.json                   # Configuración Overwolf
+│   │   ├── components/
+│   │   └── index.html
+│   ├── shared/
+│   │   ├── events/
+│   │   ├── services/
+│   │   ├── data/
+│   │   ├── components/
+│   │   └── utils/
+│   ├── background/
+│   │   ├── agents/
+│   │   └── background.js
+│   ├── overlay/
+│   │   ├── overlay.js
+│   │   └── overlay.css
+│   └── manifest.json
 ├── css/
-│   └── main.css                        # Estilos principales
-└── README.md                           # Documentación
+│   └── main.css
+├── docs/
+│   ├── ARCHITECTURE.md
+│   ├── INSTALLATION.md
+│   ├── DEVELOPMENT.md
+│   ├── ROADMAP.md
+│   └── IMPLEMENTATION_PLAN.md
+└── README.md
 ```
 
-## 🧠 Motor de Predicción
+## Motor de Predicción
 
 ### Algoritmo de Scoring
 
 El motor calcula puntuaciones usando múltiples factores:
 
 ```
-Score Total = Signature Cards (×2.0) + 
-              Key Cards (peso variable) + 
-              Color Match (×1.3) + 
-              Timing Bonus (×1.2) + 
-              Meta Popularity (×1.5) + 
-              Archetype Modifier
+Score Total = Signature Cards (×2.0) +
+              Key Cards (peso variable) +
+              Color Match (×1.3) +
+              Timing Bonus (×1.2) +
+              Meta Popularity (×1.5)
 ```
-
-### Tipos de Cartas
-
-1. **Signature Cards**: Cartas que confirman un mazo específico (peso máximo)
-2. **Key Cards**: Cartas importantes con peso variable según copias
-3. **Common Cards**: Cartas frecuentes que ayudan a la identificación
 
 ### Niveles de Confianza
 
-- **Very High (95%+)**: Auto-confirmación automática
-- **High (80-94%)**: Alta probabilidad
-- **Medium (50-79%)**: Probabilidad moderada  
+- **Very High (85%+)**: Auto-confirmación automática
+- **High (70-84%)**: Alta probabilidad
+- **Medium (50-69%)**: Probabilidad moderada
 - **Low (<50%)**: Baja probabilidad
 
-## 📊 Sistema de Datos
+## Sistema de Eventos
 
-### Fuentes de Datos
-
-- **MTGGoldfish**: Scraping automático del meta Standard
-- **Cache Local**: Almacenamiento de 24 horas
-- **Fallback Data**: Datos estáticos de respaldo
-
-### Estrategias de Scraping
-
-El scraper utiliza 4 estrategias de parsing para máxima robustez:
-
-1. **Modern Table Parser**: Análisis de tablas modernas
-2. **Text Pattern Parser**: Búsqueda por patrones de texto
-3. **Regex Scanner**: Escaneo con expresiones regulares
-4. **Fallback Method**: Método de respaldo con estimaciones
-
-### CORS y Proxies
-
-Sistema de proxies rotativos para evitar restricciones CORS:
-- `api.allorigins.win`
-- `corsproxy.io`
-- `cors.bridged.cc`
-
-## 🎨 Componentes UI
-
-### BaseComponent
-
-Clase base para todos los componentes con:
-- Sistema de estado reactivo
-- Lifecycle hooks (initialize, render, cleanup)
-- Event management automático
-- Re-rendering inteligente
-
-### Componentes Principales
-
-1. **HeaderComponent**: Navegación y estado de conexión
-2. **CardInputComponent**: Entrada de cartas con autocompletado
-3. **PredictionsComponent**: Visualización de predicciones rankeadas
-4. **ConfirmedDeckComponent**: Análisis detallado del mazo confirmado
-5. **DebugComponent**: Panel avanzado de debugging
-
-## 🔧 Sistema de Eventos
-
-EventBus centralizado con +40 eventos predefinidos:
+EventBus centralizado con 30+ eventos predefinidos:
 
 ```javascript
 // Eventos de juego
 GAME_STARTED, GAME_ENDED, TURN_STARTED, CARD_PLAYED
 
-// Eventos de predicción  
+// Eventos de predicción
 DECK_PREDICTION_UPDATED, DECK_CONFIRMED, DECK_UNCONFIRMED
 
 // Eventos de UI
@@ -167,97 +156,47 @@ UI_READY, UI_NOTIFICATION, UI_VIEW_CHANGED
 SYSTEM_READY, SYSTEM_ERROR, DATABASE_UPDATED
 ```
 
-## 🚀 Instalación y Uso
+## Desarrollo
 
-### Requisitos
+### Configuración del Entorno
 
-- Navegador moderno con soporte ES6+
-- Conexión a internet para scraping
-- Local storage habilitado
-- VS Code (recomendado para desarrollo)
+```bash
+# Instalar dependencias (si las hay)
+npm install
 
-### 🔧 Configuración del Entorno de Desarrollo
+# Para desarrollo local, usar test-app.js
+npm run test
 
-#### VS Code Extensions Recomendadas
-
-Instalar las siguientes extensiones para una experiencia de desarrollo óptima:
-
-```json
-{
-  "recommendations": [
-
-### Configuración Overwolf
-
-Para usar como aplicación de Overwolf:
-
-1. Copiar el proyecto a la carpeta de Overwolf
-2. Configurar `manifest.json` según necesidades
-3. Activar en Overwolf para MTG Arena (Game ID: 21308)
-
-## 🔧 Configuración
-
-### DatabaseManager
-
-```javascript
-const config = {
-    maxCacheAge: 24 * 60 * 60 * 1000, // 24 horas
-    fallbackData: true,                // Usar datos de respaldo
-    autoUpdate: true,                  // Auto-actualizar al inicio
-    debugMode: true                    // Modo debug
-};
+# Para debugging
+npm run debug
 ```
 
-### PredictionEngine
+### VS Code Extensions Recomendadas
 
-```javascript
-const config = {
-    confirmationThreshold: 0.95,    // 95% para auto-confirmar
-    minCardsForPrediction: 2,       // Mínimo 2 cartas
-    maxPredictions: 5,              // Top 5 predicciones
-    decayFactor: 0.9,               // Decay para cartas antiguas
-    bonusMultipliers: {
-        signature: 2.0,             // Signature cards ×2
-        meta_popular: 1.5,          // Mazos populares ×1.5
-        color_match: 1.3,           // Match exacto ×1.3
-        turn_timing: 1.2            // Timing correcto ×1.2
-    }
-};
-```
+- ES7+ React/Redux/React-Native snippets
+- Prettier - Code formatter
+- ESLint
+- Thunder Client o REST Client
 
-## 🧪 Testing
+### Testing
 
-### Aplicación de Pruebas
-
-`test-app.js` incluye una aplicación simplificada para testing:
+Usa la aplicación de pruebas en `src/test-app.js` para testing sin MTG Arena:
 
 ```javascript
 const testApp = new SimpleTestApp();
 await testApp.initialize();
-
-// Secuencia de prueba automática
 testApp.testSequence();
 ```
 
-### Debug Dashboard
-
-Panel completo con 7 tabs:
-- **Overview**: Estado general del sistema
-- **Events**: Monitor de eventos en tiempo real
-- **Database**: Estado de la base de datos
-- **Predictions**: Análisis del motor de predicción
-- **Game State**: Estado actual del juego
-- **Performance**: Métricas de rendimiento
-- **API Tests**: Pruebas de conectividad
-
-## 📈 Performance
+## Performance
 
 ### Optimizaciones
 
-- **Event Bus** optimizado con cleanup automático
-- **Cache inteligente** para reducir requests
-- **Lazy loading** de componentes
-- **Rate limiting** en scraping (2s entre requests)
-- **Memory management** con cleanup automático
+- Event Bus optimizado con cleanup automático
+- Cache inteligente para reducir requests
+- Lazy loading de componentes
+- Rate limiting en scraping (2s entre requests)
+- Memory management con cleanup automático
 
 ### Métricas
 
@@ -266,24 +205,25 @@ Panel completo con 7 tabs:
 - Uso de memoria: ~10-20MB
 - Cache hit rate: ~90%+
 
-## 🛡️ Robustez
+## Robustez
 
 ### Error Handling
 
-- **Múltiples estrategias** de parsing
-- **Fallback automático** en fallos de scraping
-- **Retry logic** con exponential backoff
-- **Graceful degradation** sin datos
+- Múltiples estrategias de parsing
+- Fallback automático en fallos de scraping
+- Retry logic con exponential backoff
+- Graceful degradation sin datos
 
 ### Logging
 
 Sistema completo de logging:
+
 - Console logs con formato consistente
 - Historial de eventos para debugging
 - Error tracking detallado
 - Performance metrics
 
-## 🔮 Roadmap
+## Roadmap
 
 ### Próximas Características
 
@@ -294,14 +234,14 @@ Sistema completo de logging:
 5. **Mobile App**: Versión para dispositivos móviles
 6. **Integración MTGO**: Soporte para Magic Online
 
-### APIs Adicionales
+### APIs Adicionales Planeadas
 
 - **Scryfall**: Información detallada de cartas
 - **MTGTop8**: Datos de torneos competitivos
 - **EDHRec**: Datos de Commander
 - **17Lands**: Estadísticas de Limited
 
-## 🤝 Contribuir
+## Contribuir
 
 ### Guidelines
 
@@ -319,24 +259,43 @@ Sistema completo de logging:
 - Nuevas funcionalidades UI
 - Tests automatizados
 
-## 📄 Licencia
+### Cómo Contribuir
+
+1. Fork el repositorio
+2. Crea una rama con tu feature: `git checkout -b feature/tu-feature`
+3. Commit con conventional commits: `git commit -m "feat: descripción"`
+4. Push a la rama: `git push origin feature/tu-feature`
+5. Abre un Pull Request
+
+## Licencia
 
 MIT License - Ver LICENSE file para detalles.
 
-## 🙏 Agradecimientos
+## Agradecimientos
 
 - **MTGGoldfish**: Por proporcionar datos del meta
 - **Scryfall**: Por la API de cartas
 - **Overwolf**: Por la plataforma de gaming apps
 - **Comunidad MTG**: Por feedback y sugerencias
 
-## 📞 Soporte
+## Soporte
 
 Para reportar bugs o solicitar funcionalidades:
-1. Crear issue en GitHub
+
+1. [Crear issue en GitHub](https://github.com/yagodemartin/MTGSnipper/issues)
 2. Incluir información de reproducción
 3. Adjuntar logs de debug si es posible
 
+## Stack Técnico
+
+- **JavaScript (Vanilla)**: Sin frameworks externos
+- **Overwolf API**: Para integración con MTG Arena
+- **LocalStorage**: Para persistencia de datos
+- **Clean Architecture**: Patrón de diseño
+- **Pub/Sub Pattern**: Para comunicación entre componentes
+
 ---
 
-**MTG Arena Sniffer** - Detecta el mazo del oponente como un profesional 🎯# MTGSnipper
+**MTG Arena Sniffer** - Detecta el mazo del oponente como un profesional
+
+Desarrollado con pasión por la comunidad MTG.

@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🔍 Debug Scraper - MTG Sniffer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1e1e1e;
+            color: #e0e0e0;
+            font-family: 'Courier New', monospace;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            color: #007AFF;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #007AFF;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        button:hover {
+            background: #0051D5;
+        }
+
+        button:disabled {
+            background: #666;
+            cursor: not-allowed;
+        }
+
+        .output-section {
+            background: #2d2d30;
+            border: 1px solid #3e3e42;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .output-section h2 {
+            color: #4EC9B0;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .output-section h3 {
+            color: #9CDCFE;
+            margin: 10px 0 5px 0;
+            font-size: 14px;
+        }
+
+        .log {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-size: 12px;
+            line-height: 1.4;
+        }
+
+        .log-entry {
+            padding: 3px 0;
+            border-bottom: 1px solid #3e3e42;
+        }
+
+        .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .log-success { color: #4EC9B0; }
+        .log-error { color: #F48771; }
+        .log-warning { color: #DCD7A5; }
+        .log-info { color: #9CDCFE; }
+
+        .deck-card {
+            background: #252526;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 12px;
+            margin: 10px 0;
+        }
+
+        .deck-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 8px;
+            border-bottom: 1px solid #3e3e42;
+            padding-bottom: 8px;
+        }
+
+        .deck-name {
+            color: #4EC9B0;
+            font-weight: bold;
+        }
+
+        .deck-meta {
+            color: #9CDCFE;
+            font-size: 12px;
+        }
+
+        .deck-stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 10px;
+            margin: 10px 0;
+            font-size: 12px;
+        }
+
+        .stat {
+            background: #1e1e1e;
+            padding: 8px;
+            border-radius: 4px;
+            border-left: 3px solid #007AFF;
+        }
+
+        .stat-label {
+            color: #858585;
+            font-size: 11px;
+        }
+
+        .stat-value {
+            color: #4EC9B0;
+            font-weight: bold;
+            margin-top: 3px;
+        }
+
+        .cards-list {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 8px;
+            margin: 8px 0;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .card-item {
+            padding: 4px 8px;
+            border-bottom: 1px solid #3e3e42;
+            font-size: 12px;
+        }
+
+        .card-item:last-child {
+            border-bottom: none;
+        }
+
+        .card-count {
+            color: #007AFF;
+            font-weight: bold;
+            margin-right: 5px;
+        }
+
+        .card-name {
+            color: #9CDCFE;
+        }
+
+        .card-price {
+            color: #858585;
+            font-size: 11px;
+            margin-left: 10px;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px;
+            background: #1e1e1e;
+            border-radius: 4px;
+            margin-bottom: 10px;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .status-indicator.ready { background: #4EC9B0; }
+        .status-indicator.working { background: #DCD7A5; animation: pulse 1s infinite; }
+        .status-indicator.error { background: #F48771; }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .json-output {
+            background: #1e1e1e;
+            border: 1px solid #3e3e42;
+            border-radius: 4px;
+            padding: 10px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 11px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔍 Debugger - Scraper de MTGGoldfish</h1>
+
+        <div class="status">
+            <div class="status-indicator" id="status-indicator"></div>
+            <span id="status-text">Listo</span>
+        </div>
+
+        <div class="controls">
+            <button id="start-scraping" onclick="startScraping()">
+                🚀 Iniciar Scraping
+            </button>
+            <button id="stop-scraping" onclick="stopScraping()" disabled>
+                ⏹️ Detener
+            </button>
+            <button id="clear-logs" onclick="clearLogs()">
+                🗑️ Limpiar Logs
+            </button>
+            <button id="export-json" onclick="exportJSON()" disabled>
+                💾 Exportar JSON
+            </button>
+        </div>
+
+        <div class="output-section">
+            <h2>📊 Logs del Sistema</h2>
+            <div class="log" id="system-log"></div>
+        </div>
+
+        <div class="output-section">
+            <h2>🎯 Decks Descargados</h2>
+            <div id="decks-container"></div>
+        </div>
+
+        <div class="output-section">
+            <h2>📋 JSON Raw (Primeros 2000 caracteres)</h2>
+            <div class="json-output" id="json-output"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import MTGGoldfishCompleteScraper from './src/infrastructure/data/MTGGoldfishCompleteScraper.js';
+
+        let scraper = null;
+        let scrapingData = null;
+        let isScraping = false;
+
+        // Hacer funciones disponibles globalmente
+        window.startScraping = startScraping;
+        window.stopScraping = stopScraping;
+        window.clearLogs = clearLogs;
+        window.exportJSON = exportJSON;
+        window.addLog = addLog;
+
+        function addLog(message, type = 'info') {
+            const log = document.getElementById('system-log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStatus(text, type = 'ready') {
+            const indicator = document.getElementById('status-indicator');
+            const statusText = document.getElementById('status-text');
+
+            indicator.className = `status-indicator ${type}`;
+            statusText.textContent = text;
+        }
+
+        async function startScraping() {
+            if (isScraping) {
+                addLog('❌ Ya hay un scraping en progreso', 'warning');
+                return;
+            }
+
+            isScraping = true;
+            updateStatus('Scraping en progreso...', 'working');
+
+            document.getElementById('start-scraping').disabled = true;
+            document.getElementById('stop-scraping').disabled = false;
+
+            addLog('🚀 Iniciando scraper...', 'info');
+
+            try {
+                scraper = new MTGGoldfishCompleteScraper();
+
+                // Interceptar logs del scraper
+                const originalLog = scraper.log.bind(scraper);
+                scraper.log = function(message, data) {
+                    addLog(`${message}${data ? ' ' + JSON.stringify(data) : ''}`, 'info');
+                    originalLog(message, data);
+                };
+
+                const originalError = scraper.logError.bind(scraper);
+                scraper.logError = function(message, data) {
+                    addLog(`${message}${data ? ' ' + JSON.stringify(data) : ''}`, 'error');
+                    originalError(message, data);
+                };
+
+                addLog('📥 Comenzando scraping...', 'info');
+                scrapingData = await scraper.scrapeCompleteMetaData();
+
+                addLog(`✅ Scraping completado! ${scrapingData.deckCount} deck(s) descargados`, 'success');
+                addLog(`📊 ${scrapingData.totalRealCards} cartas totales, ${scrapingData.totalUniqueCards} únicas`, 'success');
+
+                // Mostrar decks
+                displayDecks();
+
+                // Mostrar JSON
+                displayJSON();
+
+                document.getElementById('export-json').disabled = false;
+                updateStatus('Scraping completado', 'ready');
+
+            } catch (error) {
+                addLog(`❌ Error en scraping: ${error.message}`, 'error');
+                updateStatus('Error en scraping', 'error');
+            } finally {
+                isScraping = false;
+                document.getElementById('start-scraping').disabled = false;
+                document.getElementById('stop-scraping').disabled = true;
+            }
+        }
+
+        function stopScraping() {
+            isScraping = false;
+            addLog('⏹️ Scraping detenido', 'warning');
+            updateStatus('Detenido', 'error');
+
+            document.getElementById('start-scraping').disabled = false;
+            document.getElementById('stop-scraping').disabled = true;
+        }
+
+        function displayDecks() {
+            const container = document.getElementById('decks-container');
+            container.innerHTML = '';
+
+            if (!scrapingData || !scrapingData.decks) {
+                container.innerHTML = '<p style="color: #F48771;">No hay decks para mostrar</p>';
+                return;
+            }
+
+            scrapingData.decks.forEach((deck, index) => {
+                const card = document.createElement('div');
+                card.className = 'deck-card';
+
+                const mainboardCount = deck.mainboard ? deck.mainboard.length : 0;
+                const sideboardCount = deck.sideboard ? deck.sideboard.length : 0;
+
+                card.innerHTML = `
+                    <div class="deck-header">
+                        <div>
+                            <div class="deck-name">🎯 ${index + 1}. ${deck.name}</div>
+                            <div class="deck-meta">${deck.rank ? 'Rank: ' + deck.rank : ''} | Meta: ${deck.metaShare || 0}%</div>
+                        </div>
+                    </div>
+
+                    <div class="deck-stats">
+                        <div class="stat">
+                            <div class="stat-label">Mainboard</div>
+                            <div class="stat-value">${mainboardCount} cartas</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Sideboard</div>
+                            <div class="stat-value">${sideboardCount} cartas</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Total Deck</div>
+                            <div class="stat-value">${deck.totalCardsInDeck || 0} cartas</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Colores</div>
+                            <div class="stat-value">${(deck.colors || []).join('')}</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-label">Fuente</div>
+                            <div class="stat-value">${deck.source || 'Unknown'}</div>
+                        </div>
+                    </div>
+
+                    ${mainboardCount > 0 ? `
+                        <div>
+                            <h3>🎴 Mainboard (${mainboardCount} cartas)</h3>
+                            <div class="cards-list">
+                                ${deck.mainboard.slice(0, 20).map(card => `
+                                    <div class="card-item">
+                                        <span class="card-count">${card.copies}x</span>
+                                        <span class="card-name">${card.name}</span>
+                                        ${card.price ? `<span class="card-price">$${card.price}</span>` : ''}
+                                    </div>
+                                `).join('')}
+                                ${mainboardCount > 20 ? `<div class="card-item" style="color: #858585;">... y ${mainboardCount - 20} más</div>` : ''}
+                            </div>
+                        </div>
+                    ` : '<p style="color: #F48771;">No hay cartas de mainboard</p>'}
+
+                    ${sideboardCount > 0 ? `
+                        <div>
+                            <h3>🛡️ Sideboard (${sideboardCount} cartas)</h3>
+                            <div class="cards-list">
+                                ${deck.sideboard.slice(0, 10).map(card => `
+                                    <div class="card-item">
+                                        <span class="card-count">${card.copies}x</span>
+                                        <span class="card-name">${card.name}</span>
+                                        ${card.price ? `<span class="card-price">$${card.price}</span>` : ''}
+                                    </div>
+                                `).join('')}
+                                ${sideboardCount > 10 ? `<div class="card-item" style="color: #858585;">... y ${sideboardCount - 10} más</div>` : ''}
+                            </div>
+                        </div>
+                    ` : ''}
+                `;
+
+                container.appendChild(card);
+            });
+        }
+
+        function displayJSON() {
+            const output = document.getElementById('json-output');
+            if (!scrapingData) {
+                output.textContent = 'No hay datos';
+                return;
+            }
+
+            const jsonStr = JSON.stringify(scrapingData, null, 2);
+            output.textContent = jsonStr.substring(0, 2000) + (jsonStr.length > 2000 ? '\n...[truncado]' : '');
+        }
+
+        function clearLogs() {
+            document.getElementById('system-log').innerHTML = '';
+            addLog('🗑️ Logs limpiados', 'info');
+        }
+
+        function exportJSON() {
+            if (!scrapingData) {
+                addLog('❌ No hay datos para exportar', 'error');
+                return;
+            }
+
+            const json = JSON.stringify(scrapingData, null, 2);
+            const blob = new Blob([json], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `mtg-scraping-${new Date().toISOString().split('T')[0]}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+
+            addLog('💾 JSON exportado', 'success');
+        }
+
+        // Inicialización
+        addLog('🚀 Debugger cargado y listo', 'success');
+        updateStatus('Listo', 'ready');
+    </script>
+</body>
+</html>
