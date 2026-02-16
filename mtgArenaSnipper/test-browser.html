@@ -1,0 +1,516 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🧪 MTG Arena Sniffer - Test Completo en Navegador</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8c 100%);
+            color: #ecf0f1;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            display: grid;
+            grid-template-columns: 1fr 500px;
+            gap: 20px;
+        }
+
+        .panel {
+            background: rgba(0, 0, 0, 0.3);
+            border: 2px solid #34495e;
+            border-radius: 8px;
+            padding: 20px;
+        }
+
+        h1 {
+            color: #f39c12;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 28px;
+        }
+
+        h2 {
+            color: #f39c12;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            font-size: 18px;
+            border-bottom: 2px solid #f39c12;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            padding: 12px 20px;
+            background: #f39c12;
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.3s;
+        }
+
+        button:hover {
+            background: #e67e22;
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: #3498db;
+            color: #fff;
+        }
+
+        button.secondary:hover {
+            background: #2980b9;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        input {
+            flex: 1;
+            padding: 10px;
+            border: 1px solid #34495e;
+            border-radius: 4px;
+            background: rgba(0, 0, 0, 0.5);
+            color: #ecf0f1;
+        }
+
+        input::placeholder {
+            color: #7f8c8d;
+        }
+
+        .log-container {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid #34495e;
+            border-radius: 4px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .log-entry {
+            margin-bottom: 8px;
+            padding: 5px;
+            border-left: 3px solid #34495e;
+            padding-left: 10px;
+        }
+
+        .log-entry.info {
+            color: #3498db;
+            border-left-color: #3498db;
+        }
+
+        .log-entry.success {
+            color: #27ae60;
+            border-left-color: #27ae60;
+        }
+
+        .log-entry.warning {
+            color: #f39c12;
+            border-left-color: #f39c12;
+        }
+
+        .log-entry.error {
+            color: #e74c3c;
+            border-left-color: #e74c3c;
+        }
+
+        .overlay {
+            position: fixed;
+            top: 0;
+            right: 0;
+            width: 500px;
+            height: 600px;
+            background: linear-gradient(135deg, #1e3a5f 0%, #2d5a8c 100%);
+            border: 2px solid #34495e;
+            border-radius: 8px;
+            overflow: hidden;
+            font-size: 14px;
+            z-index: 10000;
+            display: none;
+        }
+
+        .overlay.active {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .overlay-header {
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-bottom: 2px solid #34495e;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .overlay-header h3 {
+            color: #f39c12;
+            font-size: 16px;
+        }
+
+        .status {
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 11px;
+            font-weight: bold;
+        }
+
+        .status.active {
+            background: #f39c12;
+            color: #000;
+        }
+
+        .overlay-body {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .predictions-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .prediction-item {
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-left: 4px solid #3498db;
+            border-radius: 4px;
+        }
+
+        .prediction-item h4 {
+            margin-bottom: 5px;
+            color: #fff;
+            font-size: 13px;
+        }
+
+        .prediction-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 3px;
+        }
+
+        .prediction-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #3498db, #2ecc71);
+            width: 0%;
+        }
+
+        .prediction-percentage {
+            font-size: 11px;
+            color: #f39c12;
+            font-weight: bold;
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .stat-item {
+            background: rgba(0, 0, 0, 0.2);
+            padding: 10px;
+            border-radius: 4px;
+            text-align: center;
+        }
+
+        .stat-label {
+            font-size: 11px;
+            color: #95a5a6;
+            margin-bottom: 5px;
+        }
+
+        .stat-value {
+            font-size: 18px;
+            color: #f39c12;
+            font-weight: bold;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr;
+            }
+
+            .overlay {
+                position: relative;
+                width: 100%;
+                height: auto;
+                z-index: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 TEST COMPLETO - MTG ARENA SNIFFER</h1>
+
+    <div class="container">
+        <div class="panel">
+            <h2>🎮 Control de Prueba</h2>
+
+            <div class="controls">
+                <button onclick="startGame()">🎮 Iniciar Juego</button>
+                <button class="secondary" onclick="toggleAutoTest()">🤖 Test Automático (5 cartas)</button>
+                <button onclick="endGame()">🏁 Finalizar Juego</button>
+                <button class="secondary" onclick="clearLogs()">🧹 Limpiar Logs</button>
+            </div>
+
+            <div style="margin-bottom: 20px;">
+                <h3 style="color: #f39c12; font-size: 14px; margin-bottom: 10px;">🃏 Jugar Carta Manual</h3>
+                <div class="input-group">
+                    <input type="text" id="cardInput" placeholder="Ej: Lightning Bolt, Mountain..." value="Forest">
+                    <button onclick="playCard()">Jugar</button>
+                </div>
+            </div>
+
+            <h2>📊 Logs del Sistema</h2>
+            <div class="log-container" id="logContainer">
+                <div class="log-entry info">🚀 Sistema listo para pruebas...</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2 style="margin-top: 0;">📺 Vista Previa Overlay</h2>
+            <div class="overlay active" id="overlay">
+                <div class="overlay-header">
+                    <h3>MTG Arena Sniffer</h3>
+                    <div class="status active">Analizando...</div>
+                </div>
+                <div class="overlay-body">
+                    <div id="overlayContent">
+                        <p style="color: #95a5a6; text-align: center; margin-top: 50px;">
+                            Esperando cartas...
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Sistema de logging
+        const logs = [];
+        const maxLogs = 100;
+
+        function addLog(message, type = 'info') {
+            logs.push({ message, type, time: new Date().toLocaleTimeString() });
+            if (logs.length > maxLogs) logs.shift();
+
+            const container = document.getElementById('logContainer');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+            entry.textContent = `[${logs[logs.length - 1].time}] ${message}`;
+            container.appendChild(entry);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function clearLogs() {
+            logs.length = 0;
+            document.getElementById('logContainer').innerHTML = '';
+            addLog('📋 Logs limpiados', 'info');
+        }
+
+        // Estado del juego
+        let gameState = {
+            isActive: false,
+            turn: 0,
+            cardsPlayed: [],
+            predictions: []
+        };
+
+        // Simular predicciones
+        const testDecks = [
+            { name: 'Green Aggro', prob: 0.75, confidence: 'high' },
+            { name: 'Red Burn', prob: 0.60, confidence: 'medium' },
+            { name: 'Blue Control', prob: 0.40, confidence: 'medium' },
+            { name: 'White Weenie', prob: 0.25, confidence: 'low' }
+        ];
+
+        function startGame() {
+            gameState.isActive = true;
+            gameState.turn = 0;
+            gameState.cardsPlayed = [];
+            gameState.predictions = [];
+
+            addLog('🎮 Juego iniciado', 'success');
+            updateOverlay();
+        }
+
+        function endGame() {
+            if (!gameState.isActive) {
+                addLog('⚠️ No hay juego activo', 'warning');
+                return;
+            }
+
+            gameState.isActive = false;
+            addLog(`🏁 Juego finalizado (${gameState.cardsPlayed.length} cartas jugadas)`, 'success');
+            updateOverlay();
+        }
+
+        function playCard() {
+            if (!gameState.isActive) {
+                addLog('⚠️ Inicia un juego primero', 'warning');
+                return;
+            }
+
+            const input = document.getElementById('cardInput');
+            const cardName = input.value.trim();
+
+            if (!cardName) {
+                addLog('⚠️ Ingresa un nombre de carta', 'warning');
+                return;
+            }
+
+            gameState.cardsPlayed.push(cardName);
+            gameState.turn = Math.floor(gameState.cardsPlayed.length / 2) + 1;
+
+            addLog(`🃏 ${cardName} jugada`, 'info');
+
+            // Simular predicciones
+            if (gameState.cardsPlayed.length >= 2) {
+                updatePredictions();
+            }
+
+            input.value = '';
+            updateOverlay();
+        }
+
+        function updatePredictions() {
+            // Simular predicciones basadas en cartas
+            gameState.predictions = testDecks.map(deck => {
+                // Aumentar probabilidad conforme se juegan más cartas
+                const factor = gameState.cardsPlayed.length * 0.1;
+                const newProb = Math.min(deck.prob + factor, 0.99);
+                return { ...deck, prob: newProb };
+            }).sort((a, b) => b.prob - a.prob);
+
+            addLog(`📊 Predicciones actualizadas (${gameState.cardsPlayed.length} cartas)`, 'success');
+
+            // Simular confirmación automática al 85%
+            if (gameState.predictions[0].prob >= 0.85) {
+                addLog(`🎯 ¡MAZO CONFIRMADO! ${gameState.predictions[0].name} (${(gameState.predictions[0].prob * 100).toFixed(1)}%)`, 'success');
+            }
+        }
+
+        function updateOverlay() {
+            const content = document.getElementById('overlayContent');
+
+            if (!gameState.isActive) {
+                content.innerHTML = '<p style="color: #95a5a6; text-align: center; margin-top: 50px;">Esperando juego...</p>';
+                return;
+            }
+
+            if (gameState.predictions.length === 0) {
+                content.innerHTML = `
+                    <p style="color: #95a5a6; text-align: center; margin-top: 50px;">
+                        Cartas jugadas: ${gameState.cardsPlayed.length}<br>
+                        (Necesita 2+ cartas para predicciones)
+                    </p>
+                `;
+                return;
+            }
+
+            let html = '<div class="predictions-list">';
+
+            gameState.predictions.forEach((pred, i) => {
+                const percent = (pred.prob * 100).toFixed(1);
+                html += `
+                    <div class="prediction-item">
+                        <h4>#${i + 1} - ${pred.name}</h4>
+                        <div class="prediction-bar">
+                            <div class="prediction-fill" style="width: ${percent}%"></div>
+                        </div>
+                        <div class="prediction-percentage">${percent}%</div>
+                    </div>
+                `;
+            });
+
+            html += '</div>';
+            html += `
+                <div class="stats">
+                    <div class="stat-item">
+                        <div class="stat-label">Cartas Jugadas</div>
+                        <div class="stat-value">${gameState.cardsPlayed.length}</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-label">Top Predicción</div>
+                        <div class="stat-value">${(gameState.predictions[0].prob * 100).toFixed(0)}%</div>
+                    </div>
+                </div>
+            `;
+
+            content.innerHTML = html;
+        }
+
+        let autoTestRunning = false;
+        const testCards = ['Forest', 'Llanowar Elves', 'Torbran, Thane of Red Fell', 'Goblin Chainwhirler', 'Mountain'];
+
+        function toggleAutoTest() {
+            if (autoTestRunning) {
+                autoTestRunning = false;
+                addLog('⏹️ Test automático detenido', 'warning');
+                return;
+            }
+
+            if (!gameState.isActive) {
+                startGame();
+            }
+
+            autoTestRunning = true;
+            addLog('🤖 Iniciando test automático...', 'success');
+
+            let cardIndex = 0;
+            const interval = setInterval(() => {
+                if (!autoTestRunning || cardIndex >= testCards.length) {
+                    clearInterval(interval);
+                    autoTestRunning = false;
+                    addLog('✅ Test automático completado', 'success');
+                    return;
+                }
+
+                document.getElementById('cardInput').value = testCards[cardIndex];
+                playCard();
+                cardIndex++;
+            }, 1000);
+        }
+
+        // Inicializar
+        addLog('✅ Sistema inicializado en navegador', 'success');
+        addLog('📌 Usa los botones para controlar la prueba', 'info');
+    </script>
+</body>
+</html>
