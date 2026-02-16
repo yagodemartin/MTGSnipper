@@ -4,11 +4,20 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>MTG Arena Sniffer - Overlay</title>
+    <link rel="stylesheet" href="overlay.css">
 </head>
 <body>
     <div id="overlay-container">
-        <p>Cargando overlay...</p>
+        <div class="overlay-content">
+            <div class="overlay-header">
+                <h2>MTG Arena Sniffer</h2>
+                <span class="status-indicator loading">Conectando...</span>
+            </div>
+            <div class="overlay-body">
+                <p>Inicializando overlay...</p>
+            </div>
+        </div>
     </div>
-    <script src="overlay.js"></script>
+    <script type="module" src="overlay.js"></script>
 </body>
 </html>

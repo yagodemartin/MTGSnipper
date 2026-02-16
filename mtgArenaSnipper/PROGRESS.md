@@ -54,27 +54,41 @@ FASE 5: Testing (0%)
 
 ---
 
-## 🤖 FASE 2: Agentes Críticos (0%)
+## 🤖 FASE 2: Agentes Críticos (100%) ✅ COMPLETADA
 
-**Estado**: ⏳ EN ESPERA
+**Estado**: ✅ COMPLETADA - 2026-02-16
 
-### LogMonitorAgent
-- [ ] Archivo creado
-- [ ] Métodos implementados
-- [ ] Testing local
-- [ ] Commit a GitHub
+### LogMonitorAgent ✅
+- [x] Archivo creado (200 líneas)
+- [x] Monitoreo Player.log con polling 500ms
+- [x] Métodos: initialize(), startMonitoring(), stopMonitoring(), checkForNewLines()
+- [x] Eventos: log:new-lines, log:monitor:error
+- [x] Commit a GitHub ✅
 
-### LogParserAgent
-- [ ] Archivo creado
-- [ ] Patrones regex definidos
-- [ ] Parsing implementado
-- [ ] Commit a GitHub
+### LogParserAgent ✅
+- [x] Archivo creado (250 líneas)
+- [x] Patrones regex para card:played, game:started, game:ended, turn:started
+- [x] Parseo e implementación completa
+- [x] Eventos emitidos al EventBus
+- [x] Commit a GitHub ✅
 
-### CommunicationAgent
-- [ ] Archivo creado
-- [ ] Mensajería Overwolf
-- [ ] Propagación EventBus
-- [ ] Commit a GitHub
+### CommunicationAgent ✅
+- [x] Archivo creado (250 líneas)
+- [x] Bridge OverwolfBridge integrado
+- [x] Propagación de eventos background ↔ overlay
+- [x] Manejo de cola de mensajes
+- [x] Commit a GitHub ✅
+
+### Controllers ✅
+- [x] background.js (300 líneas) - Orquestador de agentes
+- [x] overlay.js (250 líneas) - Renderizador de UI
+- [x] overlay.css (250 líneas) - Estilos completos
+
+### AnalyticsAgent ✅
+- [x] Archivo creado (200 líneas)
+- [x] Tracking de estadísticas
+- [x] Persistencia en localStorage
+- [x] Cálculo de precisión
 
 ---
 
