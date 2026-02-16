@@ -8,7 +8,7 @@ class GameService {
         this.predictionEngine = predictionEngine;
         this.databaseManager = databaseManager;
         this.eventBus = eventBus;
-
+        
         this.gameState = {
             isActive: false,
             currentTurn: 0,
@@ -18,16 +18,16 @@ class GameService {
             isConfirmed: false,
             confirmedDeck: null
         };
-
+        
         this.debugMode = true;
     }
 
     async initialize() {
         this.log('🎮 Inicializando GameService...');
-
+        
         // Configurar listeners de eventos
         this.setupEventListeners();
-
+        
         this.log('✅ GameService inicializado');
     }
 
@@ -36,73 +36,72 @@ class GameService {
         this.eventBus.on('prediction:updated', (data) => {
             this.handlePredictionUpdated(data);
         });
-
+        
         this.eventBus.on('deck:confirmed', (data) => {
             this.handleDeckConfirmed(data);
         });
     }
 
-    async addOpponentCard(cardData) {
-        try {
-            this.log(`🃏 Procesando carta: ${cardData.name}`);
-
-            // Validar datos de entrada
-            if (!this.validateCardData(cardData)) {
-                throw new Error('Datos de carta inválidos');
-            }
-
-            // Enriquecer carta con contexto del juego
-            const enrichedCard = this.enrichCard(cardData);
-
-            // Añadir al historial
-            this.gameState.cardsPlayed.push(enrichedCard);
-
-            // Procesar con prediction engine
-            const result = await this.predictionEngine.addOpponentCard(enrichedCard);
-
-            if (!result) {
-                this.log('⚠️ No se pudo procesar la carta (sin datos del meta)');
-                return { confirmed: false, predictions: [] };
-            }
-
-            // ✅ AÑADIR: Emitir eventos a la UI
-            if (result.confirmed && result.deck) {
-                // Mazo confirmado - mostrar vista confirmada
-                this.gameState.isConfirmed = true;
-                this.gameState.confirmedDeck = result.deck;
-
-                this.eventBus.emit(GAME_EVENTS.DECK_CONFIRMED, {
-                    deck: result.deck,
-                    probability: result.deck.probability,
-                    cardsAnalyzed: this.gameState.cardsPlayed.length,
-                    autoConfirmed: true
-                });
-
-                this.log(`🎯 Emitiendo deck:confirmed para: ${result.deck.name}`);
-
-            } else if (result.predictions && result.predictions.length > 0) {
-                // Predicciones actualizadas - mostrar vista predicciones
-                this.eventBus.emit(GAME_EVENTS.DECK_PREDICTION_UPDATED, {
-                    predictions: result.predictions,
-                    cardsAnalyzed: this.gameState.cardsPlayed.length,
-                    lastCard: enrichedCard
-                });
-
-                this.log(`📊 Emitiendo predicciones: ${result.predictions.length} mazos`);
-            }
-
-            return result;
-
-        } catch (error) {
-            this.logError('Error añadiendo carta:', error);
-            this.eventBus.emit(GAME_EVENTS.SYSTEM_ERROR, {
-                component: 'GameService',
-                error: error.message
-            });
-            throw error;
+   async addOpponentCard(cardData) {
+    try {
+        this.log(`🃏 Procesando carta: ${cardData.name}`);
+        
+        // Validar datos de entrada
+        if (!this.validateCardData(cardData)) {
+            throw new Error('Datos de carta inválidos');
         }
-    }
+        
+        // Enriquecer carta con contexto del juego
+        const enrichedCard = this.enrichCard(cardData);
+        
+        // Añadir al historial
+        this.gameState.cardsPlayed.push(enrichedCard);
+        
+        // Procesar con prediction engine
+        const result = await this.predictionEngine.addOpponentCard(enrichedCard);
+        
+        if (!result) {
+            this.log('⚠️ No se pudo procesar la carta (sin datos del meta)');
+            return { confirmed: false, predictions: [] };
+        }
 
+        // ✅ AÑADIR: Emitir eventos a la UI
+        if (result.confirmed && result.deck) {
+            // Mazo confirmado - mostrar vista confirmada
+            this.gameState.isConfirmed = true;
+            this.gameState.confirmedDeck = result.deck;
+            
+            this.eventBus.emit(GAME_EVENTS.DECK_CONFIRMED, {
+                deck: result.deck,
+                probability: result.deck.probability,
+                cardsAnalyzed: this.gameState.cardsPlayed.length,
+                autoConfirmed: true
+            });
+            
+            this.log(`🎯 Emitiendo deck:confirmed para: ${result.deck.name}`);
+            
+        } else if (result.predictions && result.predictions.length > 0) {
+            // Predicciones actualizadas - mostrar vista predicciones
+            this.eventBus.emit(GAME_EVENTS.DECK_PREDICTION_UPDATED, {
+                predictions: result.predictions,
+                cardsAnalyzed: this.gameState.cardsPlayed.length,
+                lastCard: enrichedCard
+            });
+            
+            this.log(`📊 Emitiendo predicciones: ${result.predictions.length} mazos`);
+        }
+        
+        return result;
+
+    } catch (error) {
+        this.logError('Error añadiendo carta:', error);
+        this.eventBus.emit(GAME_EVENTS.SYSTEM_ERROR, { 
+            component: 'GameService',
+            error: error.message 
+        });
+        throw error;
+    }
+}
     /**
      * ⏰ Actualizar turno actual
      */
@@ -110,15 +109,15 @@ class GameService {
         if (turnNumber <= 0) {
             throw new Error('Número de turno debe ser positivo');
         }
-
+        
         this.gameState.currentTurn = turnNumber;
         this.predictionEngine.setTurn(turnNumber);
-
+        
         this.eventBus.emit(GAME_EVENTS.TURN_STARTED, {
             turn: turnNumber,
             gameNumber: this.gameState.gameNumber
         });
-
+        
         this.log(`⏰ Turno actualizado: ${turnNumber}`);
     }
 
@@ -127,9 +126,9 @@ class GameService {
      */
     async resetGame() {
         this.log('🔄 Reiniciando juego...');
-
+        
         const prevGameNumber = this.gameState.gameNumber;
-
+        
         this.gameState = {
             isActive: false,
             currentTurn: 0,
@@ -139,13 +138,13 @@ class GameService {
             isConfirmed: false,
             confirmedDeck: null
         };
-
+        
         this.predictionEngine.reset();
-
+        
         this.eventBus.emit(GAME_EVENTS.GAME_ENDED, {
             gameNumber: prevGameNumber
         });
-
+        
         this.log('✅ Juego reiniciado');
     }
 
@@ -154,15 +153,15 @@ class GameService {
      */
     confirmDeck(deckId) {
         const result = this.predictionEngine.confirmDeck(deckId);
-
+        
         if (result) {
             this.gameState.isConfirmed = true;
             this.gameState.confirmedDeck = result;
-
+            
             this.eventBus.emit(GAME_EVENTS.DECK_CONFIRMED, result);
             return result;
         }
-
+        
         return null;
     }
 
@@ -187,8 +186,8 @@ class GameService {
 
     // Métodos privados
     validateCardData(cardData) {
-        return cardData &&
-               typeof cardData.name === 'string' &&
+        return cardData && 
+               typeof cardData.name === 'string' && 
                cardData.name.trim().length > 0;
     }
 
@@ -240,7 +239,7 @@ class GameService {
 class UIService {
     constructor(eventBus) {
         this.eventBus = eventBus;
-
+        
         this.uiState = {
             notifications: [],
             modals: [],
@@ -248,16 +247,16 @@ class UIService {
             sidebarCollapsed: false,
             activeTooltip: null
         };
-
+        
         this.debugMode = true;
     }
 
     async initialize() {
         this.log('🎨 Inicializando UIService...');
-
+        
         // Configurar sistema de notificaciones
         this.setupNotificationSystem();
-
+        
         this.log('✅ UIService inicializado');
     }
 
@@ -304,7 +303,7 @@ class UIService {
      */
     removeNotification(id) {
         this.uiState.notifications = this.uiState.notifications.filter(n => n.id !== id);
-
+        
         const element = document.getElementById(`notification-${id}`);
         if (element) {
             element.classList.add('removing');
@@ -324,7 +323,7 @@ class UIService {
         const element = document.createElement('div');
         element.id = `notification-${notification.id}`;
         element.className = `notification notification-${notification.type}`;
-
+        
         element.innerHTML = `
             <div class="notification-content">
                 <div class="notification-icon">${this.getNotificationIcon(notification.type)}</div>
@@ -373,7 +372,7 @@ class UIService {
         this.uiState.theme = theme;
         document.body.className = `theme-${theme}`;
         document.documentElement.setAttribute('data-theme', theme);
-
+        
         this.eventBus.emit('ui:theme-changed', { theme });
         this.log(`🎨 Tema cambiado a: ${theme}`);
     }
@@ -445,8 +444,8 @@ class UIService {
                     ${modal.content}
                 </div>
                 <div class="modal-footer">
-                    ${modal.buttons.map(btn =>
-                        `<button class="btn btn-${btn.type || 'secondary'}"
+                    ${modal.buttons.map(btn => 
+                        `<button class="btn btn-${btn.type || 'secondary'}" 
                                 data-action="${btn.action}">${btn.text}</button>`
                     ).join('')}
                 </div>
@@ -506,13 +505,13 @@ class UIService {
 
     cleanup() {
         this.log('🧹 Limpiando UIService...');
-
+        
         // Limpiar notificaciones
         this.uiState.notifications.forEach(n => this.removeNotification(n.id));
-
+        
         // Limpiar modals
         this.uiState.modals.forEach(m => this.closeModal(m.id));
-
+        
         // Limpiar tooltip
         this.hideTooltip();
     }
@@ -542,10 +541,10 @@ class CardService {
 
     async initialize() {
         this.log('🃏 Inicializando CardService...');
-
+        
         // Precargar cartas comunes
         await this.preloadCommonCards();
-
+        
         this.log('✅ CardService inicializado');
     }
 
@@ -555,7 +554,7 @@ class CardService {
     async findCard(cardName) {
         try {
             const normalizedName = this.normalizeCardName(cardName);
-
+            
             // Verificar cache primero
             if (this.cardCache.has(normalizedName)) {
                 return this.cardCache.get(normalizedName);
@@ -563,7 +562,7 @@ class CardService {
 
             // Buscar en base de datos local
             const card = await this.searchInLocalDatabase(normalizedName);
-
+            
             if (card) {
                 this.cardCache.set(normalizedName, card);
                 return card;
@@ -571,7 +570,7 @@ class CardService {
 
             // Si no se encuentra, buscar en Scryfall API
             const scryfallCard = await this.searchInScryfall(cardName);
-
+            
             if (scryfallCard) {
                 this.cardCache.set(normalizedName, scryfallCard);
                 return scryfallCard;
@@ -590,7 +589,7 @@ class CardService {
      */
     async getCardImage(cardName) {
         const card = await this.findCard(cardName);
-
+        
         if (card && card.imageUrl) {
             return card.imageUrl;
         }
@@ -618,7 +617,7 @@ class CardService {
     getCardStats(cardName) {
         // Estadísticas de uso en el meta actual
         const metaData = this.databaseManager.getCurrentMetaData();
-
+        
         if (!metaData) return null;
 
         const stats = {
@@ -630,7 +629,7 @@ class CardService {
 
         metaData.decks.forEach(deck => {
             const cardInDeck = this.findCardInDeck(cardName, deck);
-
+            
             if (cardInDeck) {
                 stats.playRate++;
                 stats.decksUsing.push(deck.name);
@@ -650,7 +649,7 @@ class CardService {
     // Métodos privados
     async preloadCommonCards() {
         const commonCards = [
-            'Lightning Bolt', 'Counterspell', 'Mountain', 'Island',
+            'Lightning Bolt', 'Counterspell', 'Mountain', 'Island', 
             'Forest', 'Plains', 'Swamp', 'Teferi, Hero of Dominaria'
         ];
 
@@ -663,15 +662,15 @@ class CardService {
     async searchInLocalDatabase(cardName) {
         // Buscar en mazos del meta actual
         const metaData = await this.databaseManager.getMetaData();
-
+        
         if (!metaData) return null;
 
         for (const deck of metaData.decks) {
             // Buscar en mainboard
-            const found = deck.mainboard?.find(card =>
+            const found = deck.mainboard?.find(card => 
                 this.normalizeCardName(card.name) === cardName
             );
-
+            
             if (found) {
                 return this.enrichCardData(found);
             }
@@ -698,7 +697,7 @@ class CardService {
             if (!response.ok) return null;
 
             const data = await response.json();
-
+            
             return {
                 name: data.name,
                 manaCost: data.mana_cost,
@@ -742,7 +741,7 @@ class CardService {
 
     findCardInDeck(cardName, deck) {
         const normalizedName = this.normalizeCardName(cardName);
-
+        
         // Buscar en mainboard
         const mainboardCard = deck.mainboard?.find(card =>
             this.normalizeCardName(card.name) === normalizedName
