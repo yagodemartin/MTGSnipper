@@ -8,13 +8,15 @@ import DatabaseManager from '../shared/data/DatabaseManager.js';
 import LogMonitorAgent from './agents/LogMonitorAgent.js';
 import LogParserAgent from './agents/LogParserAgent.js';
 import CommunicationAgent from './agents/CommunicationAgent.js';
+import AnalyticsAgent from './agents/AnalyticsAgent.js';
 
 class BackgroundController {
     constructor() {
         this.agents = {
             logMonitor: null,
             logParser: null,
-            communication: null
+            communication: null,
+            analytics: null
         };
 
         this.services = {
@@ -96,7 +98,12 @@ class BackgroundController {
             this.agents.communication = new CommunicationAgent();
             const commReady = await this.agents.communication.initialize();
 
-            if (monitorReady && parserReady && commReady) {
+            // Inicializar AnalyticsAgent
+            this.log('📊 Inicializando AnalyticsAgent...');
+            this.agents.analytics = new AnalyticsAgent();
+            const analyticsReady = await this.agents.analytics.initialize();
+
+            if (monitorReady && parserReady && commReady && analyticsReady) {
                 this.log('✅ Todos los agentes inicializados');
                 return true;
             } else {
