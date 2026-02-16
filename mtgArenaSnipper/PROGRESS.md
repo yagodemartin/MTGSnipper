@@ -19,27 +19,38 @@ FASE 5: Testing (0%)
 
 ---
 
-## ✅ FASE 1: Setup Base (0%)
+## ✅ FASE 1: Setup Base (100%) ✅ COMPLETADA
 
-**Estado**: ⏳ EN ESPERA
+**Estado**: ✅ COMPLETADA - 2026-02-16
 
-- [ ] Crear estructura directorios
-  - [ ] `src/background/`
-  - [ ] `src/background/agents/`
-  - [ ] `src/overlay/`
-  - [ ] `src/shared/`
+- [x] Crear estructura directorios
+  - [x] `src/background/` ✅
+  - [x] `src/background/agents/` ✅
+  - [x] `src/overlay/` ✅
+  - [x] `src/shared/` (6 subdirectorios) ✅
 
-- [ ] Copiar código existente
-  - [ ] EventBus.js → `src/shared/events/`
-  - [ ] GameService.js → `src/shared/services/`
-  - [ ] DatabaseManager.js → `src/shared/data/`
-  - [ ] DeckPredictionEngine.js → `src/shared/data/`
-  - [ ] Componentes UI → `src/shared/components/`
+- [x] Copiar código existente (17 archivos)
+  - [x] EventBus.js → `src/shared/events/` ✅
+  - [x] GameService.js → `src/shared/services/` ✅
+  - [x] DatabaseManager.js → `src/shared/data/` ✅
+  - [x] DeckPredictionEngine.js → `src/shared/data/` ✅
+  - [x] MTGGoldfishCompleteScraper.js → `src/shared/data/` ✅
+  - [x] AppConfig.js → `src/shared/config/` ✅
+  - [x] Utils.js → `src/shared/utils/` ✅
+  - [x] 10 Componentes UI → `src/shared/components/` ✅
 
-- [ ] Actualizar manifest.json
-  - [ ] Agregar background window
-  - [ ] Agregar overlay window
-  - [ ] Configurar permisos
+- [x] Crear nuevos archivos
+  - [x] OverwolfBridge.js (150 líneas) ✅
+  - [x] background.html placeholder ✅
+  - [x] overlay.html placeholder ✅
+
+- [x] Actualizar manifest.json
+  - [x] Cambiar start_window a BackgroundWindow ✅
+  - [x] Agregar BackgroundWindow ✅
+  - [x] Agregar OverlayWindow ✅
+  - [x] Mantener MainWindow ✅
+
+- [x] Commit a GitHub (e170ee8) ✅
 
 ---
 
